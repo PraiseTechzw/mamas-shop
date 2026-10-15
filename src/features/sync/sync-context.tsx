@@ -1,5 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type PropsWithChildren } from 'react';
 import { Image, StyleSheet, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useSQLiteContext } from 'expo-sqlite';
 import { colors } from '@/constants/theme';
 import { subscribeToConnection, type ConnectionState } from '@/lib/network';
@@ -88,6 +89,7 @@ export function SyncProvider({ children }: PropsWithChildren) {
 export function useSyncStatus() { return useContext(SyncContext); }
 
 export function NetworkSyncBanner() {
+  const insets = useSafeAreaInsets();
   const { session } = useAuth();
   const { connection, syncing, pending, failed, unavailable, lastSyncedAt } = useSyncStatus();
   const offline = connection === 'offline';
@@ -99,7 +101,7 @@ export function NetworkSyncBanner() {
   if (!session || !show) return null;
   const image = offline ? offlineArt : failedState ? failedArt : syncing ? pendingArt : pending ? pendingArt : completeArt;
   const message = offline ? 'Offline · changes stay on this device' : connection === 'checking' ? 'Checking network connection…' : needsSetup ? 'Online · cloud sync needs setup' : syncing ? 'Syncing saved changes…' : failedState ? `${failed} changes will retry automatically` : `${pending} saved ${pending === 1 ? 'change' : 'changes'} waiting to sync`;
-  return <View accessibilityLiveRegion="polite" style={[styles.banner, offline && styles.offline, failedState && styles.failed]}>
+  return <View accessibilityLiveRegion="polite" style={[styles.banner, { paddingTop: Math.max(5, insets.top) }, offline && styles.offline, failedState && styles.failed]}>
     <Image source={image} resizeMode="contain" style={styles.art} accessibilityLabel={offline ? 'Shop offline' : 'Shop sync status'} />
     <View style={styles.message}><AppText variant="small" color={colors.deepPurple}>{message}</AppText>{lastSyncedAt && !offline ? <AppText variant="small" color={colors.secondary}>Last synced {formatDateTime(lastSyncedAt)}</AppText> : null}</View>
   </View>;

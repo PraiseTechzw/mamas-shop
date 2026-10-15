@@ -40,7 +40,9 @@ import {
   Package,
 } from "lucide-react-native";
 import { useEffect, useMemo, useState } from "react";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import {
+  ActivityIndicator,
   Alert,
   Image,
   Pressable,
@@ -285,6 +287,7 @@ const methods: {
 ];
 
 export function CheckoutScreen() {
+  const insets = useSafeAreaInsets();
   const db = useSQLiteContext();
   const { session } = useAuth();
   const ownerId = session?.user.id ?? "";
@@ -555,13 +558,27 @@ export function CheckoutScreen() {
         </View>
       ) : null}
       </ScrollView>
-      <PrimaryButton
-        label={changeCents > 0 ? changeDisposition === "OWED" ? `Record change owed · ${formatMoney(changeCents)}` : `Complete sale · give ${formatMoney(changeCents)}` : "Complete sale"}
-        loading={busy}
-        onPress={completeSale}
-        disabled={!lines.length || (balance > 0 && !customerId) || (changeDisposition === "OWED" && changeCents > 0 && !customerId)}
-        icon={<Check size={19} stroke="#fff" />}
-      />
+      <View style={[styles.checkoutFooter, { paddingBottom: Math.max(insets.bottom, 8) }]}>
+        {(!lines.length || (balance > 0 && !customerId) || (changeDisposition === "OWED" && changeCents > 0 && !customerId)) ? (
+          <AppText variant="small" color={colors.secondary} style={styles.checkoutFooterHint}>
+            {!lines.length ? "Add an item to complete this sale." : changeDisposition === "OWED" && changeCents > 0 && !customerId ? "Choose the customer who will collect the change." : "Choose a customer to record the remaining balance."}
+          </AppText>
+        ) : null}
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel={changeCents > 0 ? changeDisposition === "OWED" ? `Record sale and ${formatMoney(changeCents)} change owed` : `Complete sale and give ${formatMoney(changeCents)} change` : "Complete sale"}
+          disabled={busy || !lines.length || (balance > 0 && !customerId) || (changeDisposition === "OWED" && changeCents > 0 && !customerId)}
+          onPress={completeSale}
+          style={styles.checkoutButton}
+        >
+          <View style={[styles.checkoutButtonSurface, ((!lines.length || (balance > 0 && !customerId) || (changeDisposition === "OWED" && changeCents > 0 && !customerId)) && styles.checkoutButtonDisabled)]}>
+            {busy ? <ActivityIndicator size="small" color="#FFFFFF" /> : <Check size={19} stroke="#FFFFFF" />}
+            <AppText variant="label" color="#FFFFFF" numberOfLines={1}>
+              {busy ? "Saving sale…" : changeCents > 0 ? changeDisposition === "OWED" ? `Record change owed · ${formatMoney(changeCents)}` : `Complete sale · give ${formatMoney(changeCents)}` : "Complete sale"}
+            </AppText>
+          </View>
+        </Pressable>
+      </View>
     </Page>
   );
 }
@@ -678,7 +695,12 @@ export function SalesHistoryScreen() {
 const styles = StyleSheet.create({
   checkoutPage: { flex: 1 },
   checkoutScroller: { flex: 1 },
-  checkoutContent: { gap: 14, paddingBottom: 12 },
+  checkoutContent: { gap: 14, paddingBottom: 126 },
+  checkoutFooter: { position: "absolute", left: 0, right: 0, bottom: 0, paddingTop: 10, backgroundColor: colors.background, borderTopWidth: 1, borderTopColor: colors.border, zIndex: 2, elevation: 8 },
+  checkoutFooterHint: { textAlign: "center", marginBottom: 8 },
+  checkoutButton: { width: "100%", minHeight: 54, borderRadius: 16, overflow: "hidden" },
+  checkoutButtonSurface: { width: "100%", minHeight: 54, borderRadius: 16, paddingHorizontal: 14, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 9, backgroundColor: colors.purple },
+  checkoutButtonDisabled: { backgroundColor: "#9992C4" },
   checkoutCard: { gap: 11, padding: 14, borderRadius: 18, borderColor: "#D4D7E3", backgroundColor: "#FFFFFF", shadowColor: "#25305A", shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.07, shadowRadius: 8, elevation: 2 },
   checkoutProductArt: { width: 68, height: 50, borderRadius: 9, backgroundColor: "#FFFFFF", alignItems: "center", justifyContent: "center", overflow: "hidden" },
   checkoutProductImage: { width: 66, height: 48 },
