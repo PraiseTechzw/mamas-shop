@@ -30,6 +30,7 @@ import { useSQLiteContext } from "expo-sqlite";
 import {
   Banknote,
   Check,
+  ChevronDown,
   ChevronRight,
   CreditCard,
   Minus,
@@ -589,10 +590,29 @@ export function SalesHistoryScreen() {
   const ownerId = session?.user.id ?? "";
   const [sales, setSales] = useState<SaleSummary[]>([]);
   const [refreshing, setRefreshing] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState("");
+  const [search, setSearch] = useState("");
+  const [filter, setFilter] = useState<"ALL" | "PAID" | "PARTIAL" | "CREDIT">("ALL");
+  const [expandedSaleId, setExpandedSaleId] = useState<string | null>(null);
+  const filters = [
+    { key: "ALL", label: "All sales" },
+    { key: "PAID", label: "Paid" },
+    { key: "PARTIAL", label: "Part paid" },
+    { key: "CREDIT", label: "On credit" },
+  ] as const;
+  const visibleSales = useMemo(() => sales.filter((sale) => {
+    const matchesFilter = filter === "ALL" || sale.status === filter;
+    const matchesSearch = `${sale.receipt_number} ${sale.customer_name ?? "Walk-in customer"}`.toLowerCase().includes(search.trim().toLowerCase());
+    return matchesFilter && matchesSearch;
+  }), [filter, sales, search]);
   const refresh = async () => {
     setRefreshing(true);
+    setLoadError("");
     try {
       setSales(await listRecentSales(db, ownerId));
+    } catch (value) {
+      setLoadError(value instanceof Error ? value.message : "Sales history could not be loaded.");
     } finally {
       setRefreshing(false);
     }
@@ -601,6 +621,10 @@ export function SalesHistoryScreen() {
     let active = true;
     void listRecentSales(db, ownerId).then((data) => {
       if (active) setSales(data);
+    }).catch((value: unknown) => {
+      if (active) setLoadError(value instanceof Error ? value.message : "Sales history could not be loaded.");
+    }).finally(() => {
+      if (active) setLoading(false);
     });
     return () => {
       active = false;
@@ -609,80 +633,88 @@ export function SalesHistoryScreen() {
   return (
     <Page
       title="Sales history"
-      subtitle="Every sale recorded on this device."
+      subtitle="Receipts and payments"
       back
       scroll={false}
+      contentStyle={styles.historyPage}
+      right={
+        <Pressable accessibilityRole="button" accessibilityLabel="Start a new sale" onPress={() => router.push("/sales/new")} style={styles.historyAddButton}>
+          <Plus size={20} stroke={colors.deepPurple} />
+        </Pressable>
+      }
     >
       <ScrollView
-        refreshControl={
-          <RefreshControl
-            refreshing={refreshing}
-            onRefresh={refresh}
-            tintColor={colors.purple}
-          />
-        }
-        contentContainerStyle={{ gap: 10, paddingBottom: 24 }}
+        style={styles.historyScroller}
+        contentContainerStyle={styles.historyContent}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={refresh} tintColor={colors.purple} />}
+        keyboardShouldPersistTaps="handled"
+        showsVerticalScrollIndicator={false}
       >
-        {sales.map((sale) => (
-          <Pressable
-            key={sale.id}
-            onPress={() =>
-              Alert.alert(
-                "Receipt " + sale.receipt_number,
-                (sale.customer_name || "Walk-in customer") +
-                  "\n" +
-                  formatDateTime(sale.created_at) +
-                  "\nPaid " +
-                  formatMoney(sale.paid_cents) +
-                  (sale.balance_cents
-                    ? "\nOwed " + formatMoney(sale.balance_cents)
-                    : ""),
-              )
-            }
-          >
-            <Card style={styles.historyRow}>
-              <View style={styles.receiptIcon}>
-                <ReceiptText stroke={colors.purple} size={18} />
-              </View>
-              <View style={{ flex: 1 }}>
-                <AppText variant="label">
-                  {sale.customer_name || "Walk-in customer"}
-                </AppText>
-                <AppText
-                  variant="small"
-                  color={colors.secondary}
-                  style={{ marginTop: 3 }}
-                >
-                  {sale.receipt_number} · {formatDateTime(sale.created_at)}
-                </AppText>
-              </View>
-              <View style={{ alignItems: "flex-end", gap: 6 }}>
-                <AppText variant="label">
-                  {formatMoney(sale.total_cents)}
-                </AppText>
-                <StatusBadge
-                  label={
-                    sale.status === "PAID"
-                      ? "Paid"
-                      : sale.status === "PARTIAL"
-                        ? "Part paid"
-                        : "On credit"
-                  }
-                  tone={sale.status === "PAID" ? "green" : "amber"}
-                />
-              </View>
-            </Card>
-          </Pressable>
-        ))}
-        {!sales.length ? (
+        <Field
+          label=""
+          accessibilityLabel="Search sales history"
+          icon={<Search size={18} stroke={colors.secondary} />}
+          placeholder="Search customer or receipt"
+          value={search}
+          onChangeText={setSearch}
+        />
+        <ScrollView horizontal style={styles.historyFilterScroller} showsHorizontalScrollIndicator={false} contentContainerStyle={styles.historyFilters}>
+          {filters.map((item) => (
+            <Pressable key={item.key} accessibilityRole="button" accessibilityState={{ selected: filter === item.key }} onPress={() => setFilter(item.key)} style={[styles.historyFilter, filter === item.key && styles.historyFilterActive]}>
+              <AppText variant="small" color={filter === item.key ? "#FFFFFF" : colors.secondary}>{item.label}</AppText>
+            </Pressable>
+          ))}
+        </ScrollView>
+        <View style={styles.historyListHeader}>
+          <AppText variant="heading">Recent sales</AppText>
+          <AppText variant="small" color={colors.secondary}>{visibleSales.length} {visibleSales.length === 1 ? "sale" : "sales"}</AppText>
+        </View>
+        {loading ? (
+          <View style={styles.historyLoading}><ActivityIndicator color={colors.purple} /><AppText variant="small" color={colors.secondary}>Loading sales…</AppText></View>
+        ) : null}
+        {loadError ? <View style={styles.errorBox}><AppText variant="small" color={colors.danger}>{loadError}</AppText></View> : null}
+        {!loading && !loadError && visibleSales.map((sale) => {
+          const expanded = expandedSaleId === sale.id;
+          const statusLabel = sale.status === "PAID" ? "Paid" : sale.status === "PARTIAL" ? "Part paid" : "On credit";
+          const syncLabel = sale.sync_state === "SYNCED" ? "Synced" : "Saved on device";
+          return (
+            <Pressable key={sale.id} accessibilityRole="button" accessibilityState={{ expanded }} onPress={() => setExpandedSaleId(expanded ? null : sale.id)}>
+              <Card style={styles.historyCard}>
+                <View style={styles.historyRow}>
+                  <View style={styles.receiptIcon}><ReceiptText stroke={colors.deepPurple} size={19} /></View>
+                  <View style={{ flex: 1, minWidth: 0 }}>
+                    <AppText variant="label" numberOfLines={1}>{sale.customer_name || "Walk-in customer"}</AppText>
+                    <AppText variant="small" color={colors.secondary} style={{ marginTop: 3 }} numberOfLines={1}>{formatDateTime(sale.created_at)}</AppText>
+                  </View>
+                  <View style={styles.historyAmount}>
+                    <AppText variant="label">{formatMoney(sale.total_cents)}</AppText>
+                    <StatusBadge label={statusLabel} tone={sale.status === "PAID" ? "green" : "amber"} />
+                  </View>
+                  <ChevronDown size={16} stroke={colors.secondary} style={{ transform: [{ rotate: expanded ? "180deg" : "0deg" }] }} />
+                </View>
+                {expanded ? (
+                  <View style={styles.historyDetails}>
+                    <AppText variant="small" color={colors.secondary}>Receipt · {sale.receipt_number}</AppText>
+                    <View style={styles.historyPaymentRow}><AppText variant="small" color={colors.secondary}>Paid</AppText><AppText variant="small">{formatMoney(sale.paid_cents)}</AppText></View>
+                    {sale.balance_cents > 0 ? <View style={styles.historyPaymentRow}><AppText variant="small" color={colors.warning}>Still owed</AppText><AppText variant="label" color={colors.warning}>{formatMoney(sale.balance_cents)}</AppText></View> : null}
+                    <View style={styles.historySync}><View style={[styles.syncDot, sale.sync_state === "SYNCED" && styles.syncDotComplete]} /><AppText variant="small" color={colors.secondary}>{sale.sync_state === "SYNCED" ? "Uploaded to the cloud" : "Saved on this device · will sync when available"}</AppText></View>
+                  </View>
+                ) : (
+                  <View style={styles.historyMeta}><AppText variant="small" color={colors.secondary}>{sale.receipt_number}</AppText><StatusBadge label={syncLabel} tone={sale.sync_state === "SYNCED" ? "green" : "blue"} /></View>
+                )}
+              </Card>
+            </Pressable>
+          );
+        })}
+        {!loading && !loadError && !visibleSales.length ? (
           <IllustratedEmptyState
-            image={require("@/assets/images/shop-illustrations/inventory/empty-cart.png")}
-            title="No sales recorded yet"
-            description="Completed sales will appear here, with their payment and credit status."
+            image={require("@/assets/images/shop-illustrations/sales/sales-recorded.png")}
+            title={sales.length ? "No matching sales" : "No sales recorded yet"}
+            description={sales.length ? "Try another customer name, receipt number, or payment filter." : "Completed sales will appear here with their payment and sync status."}
             action={
               <PrimaryButton
-                label="Start a sale"
-                onPress={() => router.push("/sales/new")}
+                label={sales.length ? "Clear filters" : "Start a sale"}
+                onPress={sales.length ? () => { setSearch(""); setFilter("ALL"); } : () => router.push("/sales/new")}
               />
             }
           />
@@ -846,12 +878,25 @@ const styles = StyleSheet.create({
   changeCustomer: { gap: 3, padding: 10, borderRadius: 11, backgroundColor: "#FFFFFF" },
   linkCustomerButton: { minHeight: 48, flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingHorizontal: 13, borderRadius: 13, borderWidth: 1, borderColor: "#CFC5F2", backgroundColor: "#F7F5FF" },
   errorBox: { padding: 12, borderRadius: 12, backgroundColor: "#FCEBED" },
-  historyRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 10,
-    padding: 12,
-  },
+  historyPage: { flex: 1 },
+  historyScroller: { flex: 1, minHeight: 0 },
+  historyContent: { gap: 12, paddingBottom: 24 },
+  historyAddButton: { width: 42, height: 42, borderRadius: 14, backgroundColor: colors.lavenderTint, alignItems: "center", justifyContent: "center" },
+  historyFilterScroller: { height: 38, flexGrow: 0, flexShrink: 0 },
+  historyFilters: { flexDirection: "row", alignItems: "center", gap: 8, paddingVertical: 2 },
+  historyFilter: { minHeight: 34, justifyContent: "center", paddingHorizontal: 13, borderRadius: 18, backgroundColor: "#F0F1F7" },
+  historyFilterActive: { backgroundColor: colors.purple },
+  historyListHeader: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginTop: 1 },
+  historyLoading: { minHeight: 120, alignItems: "center", justifyContent: "center", gap: 9 },
+  historyCard: { gap: 10, padding: 12, borderColor: "#DDE0EA", backgroundColor: "#FFFFFF" },
+  historyRow: { flexDirection: "row", alignItems: "center", gap: 10 },
+  historyAmount: { alignItems: "flex-end", gap: 6 },
+  historyMeta: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingTop: 9, borderTopWidth: 1, borderColor: colors.border },
+  historyDetails: { gap: 8, paddingTop: 10, borderTopWidth: 1, borderColor: colors.border },
+  historyPaymentRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
+  historySync: { flexDirection: "row", alignItems: "center", gap: 7, marginTop: 2 },
+  syncDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: colors.info },
+  syncDotComplete: { backgroundColor: colors.success },
   receiptIcon: {
     width: 38,
     height: 38,
