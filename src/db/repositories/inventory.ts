@@ -39,8 +39,16 @@ export async function updateProduct(db: SQLiteDatabase, ownerId: string, id: str
   if (!input.name.trim() || input.priceCents < 0 || input.costCents < 0 || input.reorder < 0) throw new Error('Check the product details.');
   const at = now();
   await db.withTransactionAsync(async () => {
-    await db.runAsync('UPDATE products SET name = ?, sku = ?, category = ?, unit = ?, price_cents = ?, cost_cents = ?, reorder_level = ?, updated_at = ? WHERE id = ? AND owner_id = ? AND is_active = 1', input.name.trim(), input.sku.trim() || null, input.category.trim() || 'Other', input.unit.trim() || 'each', input.priceCents, input.costCents, input.reorder, at, id, ownerId);
-    await enqueueChange(db, ownerId, 'product', id, 'product.update', { id, ...input, updated_at: at }, at);
+    const current = await getProduct(db, ownerId, id);
+    if (!current) throw new Error('Product not found.');
+    const sku = input.sku.trim() || null;
+    if (sku) {
+      const duplicate = await db.getFirstAsync<{ id: string }>('SELECT id FROM products WHERE owner_id = ? AND sku = ? AND id != ? AND is_active = 1', ownerId, sku, id);
+      if (duplicate) throw new Error('That product code is already in use.');
+    }
+    await db.runAsync('UPDATE products SET name = ?, sku = ?, category = ?, unit = ?, price_cents = ?, cost_cents = ?, reorder_level = ?, updated_at = ? WHERE id = ? AND owner_id = ? AND is_active = 1', input.name.trim(), sku, input.category.trim() || 'Other', input.unit.trim() || 'each', input.priceCents, input.costCents, input.reorder, at, id, ownerId);
+    await db.runAsync(`INSERT INTO audit_log (id, owner_id, action, entity_type, entity_id, description, created_at) VALUES (?, ?, 'UPDATE', 'product', ?, ?, ?)`, Crypto.randomUUID(), ownerId, id, 'Updated product ' + input.name.trim(), at);
+    await enqueueChange(db, ownerId, 'product', id, 'product.update', { id, ...input, sku, name: input.name.trim(), category: input.category.trim() || 'Other', unit: input.unit.trim() || 'each', updated_at: at }, at);
   });
 }
 export async function receiveStock(db: SQLiteDatabase, ownerId: string, productId: string, quantity: number, unitCostCents: number, note: string, locationId?: string) {

@@ -3,6 +3,7 @@ import type { SaleSummary } from '@/db/schema';
 
 export type DashboardData = {
   salesTodayCents: number;
+  salesTodayCount: number;
   paymentsTodayCents: number;
   creditOutstandingCents: number;
   activeCustomers: number;
@@ -15,7 +16,7 @@ export async function getDashboardData(db: SQLiteDatabase, ownerId: string): Pro
   const today = new Date();
   const start = new Date(today.getFullYear(), today.getMonth(), today.getDate()).toISOString();
   const end = new Date(today.getFullYear(), today.getMonth(), today.getDate() + 1).toISOString();
-  const sales = await db.getFirstAsync<{ value: number }>('SELECT COALESCE(SUM(total_cents), 0) AS value FROM sales WHERE owner_id = ? AND created_at >= ? AND created_at < ?', ownerId, start, end);
+  const sales = await db.getFirstAsync<{ value: number; count: number }>('SELECT COALESCE(SUM(total_cents), 0) AS value, COUNT(*) AS count FROM sales WHERE owner_id = ? AND created_at >= ? AND created_at < ?', ownerId, start, end);
   const payments = await db.getFirstAsync<{ value: number }>("SELECT COALESCE(SUM(amount_cents), 0) AS value FROM payments WHERE owner_id = ? AND created_at >= ? AND created_at < ? AND kind = 'SALE'", ownerId, start, end);
   const credit = await db.getFirstAsync<{ value: number }>('SELECT COALESCE(SUM(amount_cents), 0) AS value FROM account_entries WHERE owner_id = ?', ownerId);
   const customers = await db.getFirstAsync<{ value: number }>('SELECT COUNT(*) AS value FROM customers WHERE owner_id = ?', ownerId);
@@ -30,6 +31,7 @@ export async function getDashboardData(db: SQLiteDatabase, ownerId: string): Pro
   }
   return {
     salesTodayCents: sales?.value ?? 0,
+    salesTodayCount: sales?.count ?? 0,
     paymentsTodayCents: payments?.value ?? 0,
     creditOutstandingCents: Math.max(0, credit?.value ?? 0),
     activeCustomers: customers?.value ?? 0,

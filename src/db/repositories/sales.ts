@@ -64,6 +64,7 @@ export async function recordSale(db: SQLiteDatabase, input: RecordSaleInput) {
       if (!customer) throw new Error('Choose a customer from this shop before recording credit.');
     }
     await db.runAsync('INSERT INTO sales (id, owner_id, receipt_number, customer_id, total_cents, paid_cents, balance_cents, status, created_by, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)', saleId, input.ownerId, receiptNumber, input.customerId, totalCents, input.amountPaidCents, balanceCents, status, input.createdBy, now);
+    await db.runAsync(`INSERT INTO audit_log (id, owner_id, action, entity_type, entity_id, description, created_at) VALUES (?, ?, 'CREATE', 'sale', ?, ?, ?)`, Crypto.randomUUID(), input.ownerId, saleId, 'Recorded sale ' + receiptNumber + ' for ' + totalCents + ' cents', now);
     for (const line of lines) {
       const changed = await db.runAsync('UPDATE products SET stock_quantity = stock_quantity - ?, updated_at = ? WHERE id = ? AND owner_id = ? AND stock_quantity >= ?', line.quantity, now, line.productId, input.ownerId, line.quantity);
       if (changed.changes !== 1) throw new Error('Stock changed while completing this sale. Please review the cart and try again.');
@@ -104,6 +105,7 @@ export async function recordRepayment(db: SQLiteDatabase, ownerId: string, custo
     const paymentId = Crypto.randomUUID();
     await db.runAsync('INSERT INTO payments (id, owner_id, customer_id, amount_cents, method, kind, note, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)', paymentId, ownerId, customerId, amountCents, method, 'REPAYMENT', note.trim() || null, now);
     await db.runAsync('INSERT INTO account_entries (id, owner_id, customer_id, payment_id, entry_type, amount_cents, note, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)', id, ownerId, customerId, paymentId, 'PAYMENT', -amountCents, note.trim() || 'Repayment received · ' + method, now);
+    await db.runAsync(`INSERT INTO audit_log (id, owner_id, action, entity_type, entity_id, description, created_at) VALUES (?, ?, 'REPAYMENT', 'payment', ?, ?, ?)`, Crypto.randomUUID(), ownerId, paymentId, 'Recorded customer repayment of ' + amountCents + ' cents', now);
     await enqueueChange(db, ownerId, 'payment', paymentId, 'credit.repayment.create', { id: paymentId, customer_id: customerId, amount_cents: amountCents, method, note: note.trim() || null, created_at: now }, now);
   });
   return id;
