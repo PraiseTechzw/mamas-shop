@@ -93,10 +93,12 @@ export function NetworkSyncBanner() {
   const offline = connection === 'offline';
   const needsSetup = unavailable === 'not-configured';
   const failedState = failed > 0 && !offline;
-  const show = offline || connection === 'online' || syncing || pending > 0 || needsSetup;
+  // Keep the app header clear during normal operation. Show this banner only
+  // when the connection or sync queue needs the user's attention.
+  const show = connection === 'checking' || offline || syncing || pending > 0 || failedState || needsSetup;
   if (!session || !show) return null;
   const image = offline ? offlineArt : failedState ? failedArt : syncing ? pendingArt : pending ? pendingArt : completeArt;
-  const message = offline ? 'Offline · changes stay on this device' : needsSetup ? 'Online · cloud sync needs setup' : syncing ? 'Syncing saved changes…' : failedState ? `${failed} changes will retry automatically` : pending ? `${pending} changes waiting to sync` : 'Online · all saved changes uploaded';
+  const message = offline ? 'Offline · changes stay on this device' : connection === 'checking' ? 'Checking network connection…' : needsSetup ? 'Online · cloud sync needs setup' : syncing ? 'Syncing saved changes…' : failedState ? `${failed} changes will retry automatically` : `${pending} saved ${pending === 1 ? 'change' : 'changes'} waiting to sync`;
   return <View accessibilityLiveRegion="polite" style={[styles.banner, offline && styles.offline, failedState && styles.failed]}>
     <Image source={image} resizeMode="contain" style={styles.art} accessibilityLabel={offline ? 'Shop offline' : 'Shop sync status'} />
     <View style={styles.message}><AppText variant="small" color={colors.deepPurple}>{message}</AppText>{lastSyncedAt && !offline ? <AppText variant="small" color={colors.secondary}>Last synced {formatDateTime(lastSyncedAt)}</AppText> : null}</View>
