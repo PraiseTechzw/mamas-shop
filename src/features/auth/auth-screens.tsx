@@ -3,25 +3,18 @@ import { ActivityIndicator, Image, ImageBackground, KeyboardAvoidingView, Platfo
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Svg, { Defs, LinearGradient, Path, Rect, Stop } from 'react-native-svg';
 import { router } from 'expo-router';
-import { ArrowLeft, ArrowRight, Eye, EyeOff, Heart, ShieldCheck, Tag, Truck } from 'lucide-react-native';
+import { ArrowLeft, ArrowRight, Eye, EyeOff, Heart, LockKeyhole, Mail, ShieldCheck, Tag, Truck, UserRound } from 'lucide-react-native';
 import { colors } from '@/constants/theme';
 import { AppText, Field } from '@/components/ui/primitives';
 import { useAuth } from './auth-context';
 import { supabase } from '@/lib/supabase';
 
-const logo = require('@/assets/images/brand/cart-mark.png');
 const welcomeLogo = require('@/assets/images/brand/Mama’s Shop Speedy Cart Logo.png');
 const welcomeStorefront = require('@/assets/images/marketing/Sunny Mama’s Shop Neighborhood Market.png');
 
 function BrandHeader({ compact = false }: { compact?: boolean }) {
-  if (!compact) return <View style={styles.brandBlock}>
-    <Image source={welcomeLogo} resizeMode="contain" style={styles.welcomeLogo} accessibilityLabel="Mama’s Shop, Small Business · Big Dreams" />
-  </View>;
-  return <View style={styles.brandBlock}>
-    <Image source={logo} style={[styles.logo, compact && styles.smallLogo]} accessibilityLabel="Mama’s Shop shopping cart logo" />
-    <AppText variant="heading" style={[styles.brandName, compact && styles.compactBrandName]}>Mama’s Shop</AppText>
-    <AppText variant="small" color={colors.deepPurple} style={styles.brandTagline}>Small Business · Big Dreams</AppText>
-    {!compact ? <AppText variant="small" color={colors.secondary} style={styles.brandPromise}>Quality products · Fair prices · Serving our community</AppText> : null}
+  return <View style={[styles.brandBlock, compact && styles.compactBrandBlock]}>
+    <Image source={welcomeLogo} resizeMode="contain" style={compact ? styles.compactWelcomeLogo : styles.welcomeLogo} accessibilityLabel="Mama’s Shop, Small Business · Big Dreams" />
   </View>;
 }
 
@@ -163,10 +156,10 @@ export function LoginScreen() {
           <AppText color={colors.secondary} style={styles.loginSubtitle}>{creating ? 'Set up your sign-in to manage your business.' : 'Sign in to continue managing your business.'}</AppText>
         </View>
         <View style={styles.form}>
-          {creating ? <Field label="Your name" placeholder="e.g. Mama Moyo" autoCapitalize="words" value={fullName} onChangeText={setFullName} returnKeyType="next" /> : null}
-          <Field label="Email address" placeholder="you@example.com" keyboardType="email-address" autoCapitalize="none" autoCorrect={false} value={email} onChangeText={setEmail} returnKeyType="next" />
+          {creating ? <Field label="Your name" placeholder="e.g. Mama Moyo" icon={<UserRound size={18} color={colors.secondary} />} focusAccent autoCapitalize="words" value={fullName} onChangeText={setFullName} returnKeyType="next" /> : null}
+          <Field label="Email address" placeholder="you@example.com" icon={<Mail size={18} color={colors.secondary} />} focusAccent keyboardType="email-address" autoCapitalize="none" autoCorrect={false} value={email} onChangeText={setEmail} returnKeyType="next" />
           <View>
-            <Field label="Password" placeholder="Enter your password" secureTextEntry={!showPassword} value={password} onChangeText={setPassword} onSubmitEditing={submit} returnKeyType="go" />
+            <Field label="Password" placeholder="Enter your password" icon={<LockKeyhole size={18} color={colors.secondary} />} focusAccent inputStyle={styles.passwordInput} secureTextEntry={!showPassword} value={password} onChangeText={setPassword} onSubmitEditing={submit} returnKeyType="go" />
             <Pressable accessibilityRole="button" accessibilityLabel={showPassword ? 'Hide password' : 'Show password'} hitSlop={10} onPress={() => setShowPassword((value) => !value)} style={styles.passwordEye}>
               {showPassword ? <EyeOff size={19} stroke={colors.secondary} /> : <Eye size={19} stroke={colors.secondary} />}
             </Pressable>
@@ -199,12 +192,8 @@ const styles = StyleSheet.create({
   benefit: { flex: 1, alignItems: 'center', gap: 4 },
   benefitIcon: { width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center' },
   benefitLabel: { fontFamily: 'Inter-SemiBold', fontSize: 11, lineHeight: 14, textAlign: 'center' },
-  brandPromise: { textAlign: 'center', fontSize: 10, lineHeight: 14, marginTop: 0 },
-  logo: { width: 46, height: 46, marginBottom: 2 },
-  smallLogo: { width: 40, height: 40 },
-  brandName: { fontFamily: 'Poppins-SemiBold', fontSize: 32, lineHeight: 38, color: colors.deepPurple },
-  compactBrandName: { fontSize: 26, lineHeight: 32 },
-  brandTagline: { fontFamily: 'Inter-Medium', letterSpacing: 0.2, marginTop: 2 },
+  compactBrandBlock: { marginBottom: 8 },
+  compactWelcomeLogo: { width: '72%', aspectRatio: 2.34, maxHeight: 90, alignSelf: 'center' },
   hero: { aspectRatio: 1.5, overflow: 'hidden', alignSelf: 'stretch', marginHorizontal: -22 },
   heroImage: { ...StyleSheet.absoluteFill },
   heroImageContent: { width: '100%', height: '100%' },
@@ -227,6 +216,7 @@ const styles = StyleSheet.create({
   loginSubtitle: { textAlign: 'center', lineHeight: 21, maxWidth: 290 },
   form: { gap: 13 },
   passwordEye: { position: 'absolute', right: 14, top: 32, height: 48, justifyContent: 'center' },
+  passwordInput: { paddingRight: 48 },
   forgotButton: { alignSelf: 'flex-end', marginTop: -5, paddingVertical: 3 },
   configMessage: { lineHeight: 18, textAlign: 'center' },
   errorBox: { borderRadius: 12, padding: 12, backgroundColor: '#FCEBED' },

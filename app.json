@@ -11,7 +11,7 @@
     "primaryColor": "#5B43D6",
     "android": {
       "adaptiveIcon": {
-        "backgroundColor": "#FFC83D",
+        "backgroundColor": "#FCFDFF",
         "foregroundImage": "./assets/images/brand/android-foreground.png",
         "monochromeImage": "./assets/images/brand/android-monochrome.png"
       },
@@ -27,9 +27,9 @@
       [
         "expo-splash-screen",
         {
-          "backgroundColor": "#F7F7FC",
-          "image": "./assets/images/brand/splash-mark.png",
-          "imageWidth": 220
+          "backgroundColor": "#FCFDFF",
+          "image": "./assets/images/brand/Mama’s Shop Speedy Cart Logo.png",
+          "imageWidth": 280
         }
       ],
       "expo-sqlite",

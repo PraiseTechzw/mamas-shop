@@ -1,4 +1,4 @@
-import type { PropsWithChildren, ReactNode } from 'react';
+import { useState, type PropsWithChildren, type ReactNode } from 'react';
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, TextInput, View, type TextInputProps, type TextStyle, type ViewStyle } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { ChevronLeft } from 'lucide-react-native';
@@ -29,8 +29,23 @@ export function SecondaryButton({ label, onPress, style, icon }: { label: string
   return <Pressable accessibilityRole="button" onPress={onPress} style={({ pressed }) => [styles.secondaryButton, style, pressed && { backgroundColor: colors.lavenderTint }]}>{icon}<AppText variant="label" color={colors.deepPurple}>{label}</AppText></Pressable>;
 }
 
-export function Field({ label, error, containerStyle, inputStyle, ...props }: TextInputProps & { label: string; error?: string; containerStyle?: ViewStyle; inputStyle?: TextStyle }) {
-  return <View style={[styles.field, containerStyle]}>{label ? <AppText variant="label" style={{ marginBottom: 7 }}>{label}</AppText> : null}<TextInput placeholderTextColor="#9A9AAC" {...props} style={[styles.input, inputStyle, props.multiline && { minHeight: 90, textAlignVertical: 'top' }]} />{error ? <AppText variant="small" color={colors.danger} style={{ marginTop: 5 }}>{error}</AppText> : null}</View>;
+export function Field({ label, error, containerStyle, inputStyle, icon, focusAccent = false, onFocus, onBlur, ...props }: TextInputProps & { label: string; error?: string; containerStyle?: ViewStyle; inputStyle?: TextStyle; icon?: ReactNode; focusAccent?: boolean }) {
+  const [focused, setFocused] = useState(false);
+  return <View style={[styles.field, containerStyle]}>
+    {label ? <AppText variant="label" style={{ marginBottom: 7 }}>{label}</AppText> : null}
+    <View style={[styles.inputFrame, focused && focusAccent && styles.inputFrameFocused]}>
+      {icon ? <View pointerEvents="none" style={styles.inputIcon}>{icon}</View> : null}
+      <TextInput
+        placeholderTextColor="#9A9AAC"
+        underlineColorAndroid="transparent"
+        {...props}
+        onFocus={(event) => { setFocused(true); onFocus?.(event); }}
+        onBlur={(event) => { setFocused(false); onBlur?.(event); }}
+        style={[styles.input, icon && styles.inputWithIcon, inputStyle, props.multiline && { minHeight: 90, textAlignVertical: 'top' }]}
+      />
+    </View>
+    {error ? <AppText variant="small" color={colors.danger} style={{ marginTop: 5 }}>{error}</AppText> : null}
+  </View>;
 }
 
 export function SectionTitle({ children, action, onAction }: { children: string; action?: string; onAction?: () => void }) {
@@ -57,6 +72,10 @@ const styles = StyleSheet.create({
   secondaryButton: { minHeight: 48, borderRadius: radius.button, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface, paddingHorizontal: 16, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 },
   disabled: { opacity: 0.55 },
   field: { gap: 0 },
-  input: { minHeight: 50, borderWidth: 1, borderColor: colors.border, borderRadius: radius.input, backgroundColor: colors.surface, paddingHorizontal: 14, paddingVertical: 12, color: colors.text, fontFamily: 'Inter-Regular', fontSize: 15 },
+  inputFrame: { minHeight: 54, flexDirection: 'row', alignItems: 'center', borderWidth: 1, borderColor: colors.border, borderRadius: 16, backgroundColor: colors.surface },
+  inputFrameFocused: { borderColor: '#E6AF00', borderWidth: 1.5, backgroundColor: '#FFFCF1', shadowColor: '#F2B500', shadowOpacity: 0.28, shadowRadius: 8, shadowOffset: { width: 0, height: 0 }, elevation: 3 },
+  inputIcon: { width: 42, alignItems: 'center', justifyContent: 'center' },
+  input: { flex: 1, minHeight: 52, borderRadius: 16, backgroundColor: 'transparent', paddingHorizontal: 14, paddingVertical: 12, color: colors.text, fontFamily: 'Inter-Regular', fontSize: 15 },
+  inputWithIcon: { paddingLeft: 0 },
   sectionRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 4 },
 });
