@@ -39,7 +39,7 @@ Use stable operation IDs and server-side idempotency so a retry cannot create a 
 
 ## Product design
 
-The approved UI/UX reference is the visual source of truth for screen hierarchy, spacing, colors, typography, component states, and interaction behavior. See [`design/README.md`](./design/README.md) for its current location and handoff status. Implement designs mobile-first and keep behavior usable across supported platforms.
+The approved UI/UX references in [`design/README.md`](./design/README.md) are the visual source of truth for screen hierarchy, spacing, colors, typography, component states, and interaction behavior. Implement designs mobile-first and keep behavior usable across supported platforms.
 
 ## Documentation
 
