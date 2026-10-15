@@ -11,4 +11,4 @@ Each PNG is an individual transparent crop from the original icon sheet.
 - `family/`: seller and access management
 - `reports/`: analytics state
 
-Source sheet: `Glossy Purple Shop Management Icon Pack.png`
+Source sheet: `../source/shop-management-icon-pack.png`
