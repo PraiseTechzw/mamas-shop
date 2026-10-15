@@ -1,6 +1,6 @@
 import type { PropsWithChildren, ReactNode } from 'react';
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, TextInput, View, type TextInputProps, type TextStyle, type ViewStyle } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { ChevronLeft } from 'lucide-react-native';
 import { router } from 'expo-router';
 import { colors, radius, spacing } from '@/constants/theme';
@@ -12,8 +12,9 @@ export function AppText({ children, variant = 'body', color, style, numberOfLine
 }
 
 export function Page({ children, title, subtitle, back = false, right, scroll = true, contentStyle }: PropsWithChildren<{ title?: string; subtitle?: string; back?: boolean; right?: ReactNode; scroll?: boolean; contentStyle?: ViewStyle }>) {
+  const insets = useSafeAreaInsets();
   const content = <View style={[styles.content, contentStyle]}>{title ? <View style={styles.headingRow}>{back ? <Pressable onPress={() => router.back()} hitSlop={12} style={styles.back}><ChevronLeft stroke={colors.deepPurple} size={22} /></Pressable> : null}<View style={styles.headingText}><AppText variant="title">{title}</AppText>{subtitle ? <AppText color={colors.secondary} style={{ marginTop: 3 }}>{subtitle}</AppText> : null}</View>{right}</View> : null}{children}</View>;
-  return <SafeAreaView className="flex-1 bg-canvas" edges={['top']}><View className="flex-1 bg-canvas">{scroll ? <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={{ flexGrow: 1, paddingBottom: 30 }}>{content}</ScrollView> : content}</View></SafeAreaView>;
+  return <SafeAreaView className="flex-1 bg-canvas" edges={['top']}><View className="flex-1 bg-canvas">{scroll ? <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={{ flexGrow: 1, paddingBottom: Math.max(30, insets.bottom + 16) }}>{content}</ScrollView> : content}</View></SafeAreaView>;
 }
 
 export function Card({ children, style }: PropsWithChildren<{ style?: ViewStyle }>) {

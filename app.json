@@ -15,7 +15,7 @@
         "foregroundImage": "./assets/images/brand/android-foreground.png",
         "monochromeImage": "./assets/images/brand/android-monochrome.png"
       },
-      "predictiveBackGestureEnabled": false
+      "predictiveBackGestureEnabled": true
     },
     "web": {
       "bundler": "metro",
