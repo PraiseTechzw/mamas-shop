@@ -1,0 +1,1 @@
+-- Add local development seed data here when the database schema is introduced.
