@@ -23,22 +23,26 @@ import type {
 } from "@/db/schema";
 import { useAuth } from "@/features/auth/auth-context";
 import { formatDateTime, formatMoney, toCents } from "@/lib/format";
+import { imageSource } from "@/lib/product-images";
 import { useCart } from "@/stores/cart";
 import { router } from "expo-router";
 import { useSQLiteContext } from "expo-sqlite";
 import {
   Banknote,
   Check,
+  ChevronRight,
   CreditCard,
   Minus,
   Plus,
   ReceiptText,
   Search,
   Smartphone,
+  Package,
 } from "lucide-react-native";
 import { useEffect, useMemo, useState } from "react";
 import {
   Alert,
+  Image,
   Pressable,
   RefreshControl,
   ScrollView,
@@ -46,12 +50,23 @@ import {
   View,
 } from "react-native";
 
+function saleCategory(product: Product) {
+  const value = `${product.name} ${product.category}`.toLowerCase();
+  if (/biscuit|cookie/.test(value)) return "Biscuits";
+  if (/snack|snax|crisps|king cos|king kurls/.test(value)) return "Snacks";
+  if (/maheu|mahewu|mahero|drink|beverage|water|mirinda|pepsi|coke|fruiticana/.test(value)) return "Drinks";
+  if (/meat|deli|polony/.test(value)) return "Meat & Deli";
+  if (/airtime|econet|netone/.test(value)) return "Airtime";
+  return "Other";
+}
+
 export function SalesScreen() {
   const db = useSQLiteContext();
   const { session } = useAuth();
   const ownerId = session?.user.id ?? "";
   const [rows, setRows] = useState<Product[]>([]);
   const [search, setSearch] = useState("");
+  const [category, setCategory] = useState("All");
   const lines = useCart((state) => state.lines);
   const creditMode = useCart((state) => state.creditMode);
   const addProduct = useCart((state) => state.addProduct);
@@ -68,6 +83,14 @@ export function SalesScreen() {
       active = false;
     };
   }, [db, ownerId, search]);
+  const categories = useMemo(
+    () => ["All", ...Array.from(new Set(rows.map(saleCategory)))],
+    [rows],
+  );
+  const visibleRows = useMemo(
+    () => rows.filter((product) => category === "All" || saleCategory(product) === category),
+    [category, rows],
+  );
   return (
     <Page
       title={creditMode ? "New credit sale" : "Quick sale"}
@@ -81,38 +104,58 @@ export function SalesScreen() {
           <ReceiptText size={21} stroke={colors.purple} />
         </Pressable>
       }
+      scroll={false}
+      contentStyle={styles.salesPage}
     >
-      <View style={styles.searchBox}>
-        <Search size={18} stroke={colors.secondary} />
-        <Field
-          label=""
-          accessibilityLabel="Search products"
-          placeholder="Search products or categories"
-          value={search}
-          onChangeText={setSearch}
-          containerStyle={{ flex: 1 }}
-        />
+      <ScrollView
+        style={styles.salesScroller}
+        contentContainerStyle={styles.salesScrollContent}
+        keyboardShouldPersistTaps="handled"
+        showsVerticalScrollIndicator={false}
+      >
+      <Field
+        label=""
+        accessibilityLabel="Search products"
+        icon={<Search size={18} stroke={colors.secondary} />}
+        placeholder="Search products or categories"
+        value={search}
+        onChangeText={setSearch}
+      />
+      <View style={styles.categoryHeader}>
+        <AppText variant="label">Categories</AppText>
+        <StatusBadge label={`${rows.length} in stock`} tone="green" />
       </View>
-      <View style={styles.categoryRow}>
-        <StatusBadge label="In stock" />
-        <AppText variant="small" color={colors.secondary}>
-          Only items ready to sell are shown
-        </AppText>
-      </View>
-      {!rows.length ? (
+      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.categoryFilters}>
+        {categories.map((item) => (
+          <Pressable
+            key={item}
+            accessibilityRole="button"
+            accessibilityState={{ selected: category === item }}
+            onPress={() => setCategory(item)}
+            style={[styles.categoryFilter, category === item && styles.categoryFilterActive]}
+          >
+            <AppText variant="small" color={category === item ? "#FFFFFF" : colors.secondary}>{item}</AppText>
+          </Pressable>
+        ))}
+      </ScrollView>
+      {!visibleRows.length ? (
         <IllustratedEmptyState
           image={require("@/assets/images/shop-illustrations/inventory/empty-cart.png")}
-          title={search ? "No matching products" : "No products ready to sell"}
+          title={rows.length ? "No products in this category" : search ? "No matching products" : "No products ready to sell"}
           description={
-            search
+            rows.length
+              ? "Choose another category to see available products."
+              : search
               ? "Try another name or category."
               : "Add products and receive stock before recording your first sale."
           }
           action={
             <PrimaryButton
-              label={search ? "Clear search" : "Open inventory"}
+              label={rows.length ? "Show all products" : search ? "Clear search" : "Open inventory"}
               onPress={
-                search
+                rows.length
+                  ? () => setCategory("All")
+                  : search
                   ? () => setSearch("")
                   : () => router.push("/(tabs)/inventory")
               }
@@ -121,11 +164,13 @@ export function SalesScreen() {
         />
       ) : (
         <View style={styles.productGrid}>
-          {rows.map((product) => {
+          {visibleRows.map((product) => {
             const inCart = lines.find((line) => line.productId === product.id);
             return (
               <Pressable
                 key={product.id}
+                accessibilityRole="button"
+                accessibilityLabel={`Add ${product.name} to sale, ${formatMoney(product.price_cents)}, ${product.stock_quantity} ${product.unit} in stock`}
                 onPress={() => addProduct(product)}
                 style={({ pressed }) => [
                   styles.productCard,
@@ -133,26 +178,31 @@ export function SalesScreen() {
                 ]}
               >
                 <View style={styles.productArt}>
-                  <ReceiptText size={22} stroke={colors.purple} />
+                  {imageSource(product) ? (
+                    <Image
+                      source={imageSource(product)!}
+                      resizeMode="contain"
+                      style={styles.productImage}
+                      accessibilityLabel={`${product.name} product photo`}
+                    />
+                  ) : (
+                    <Package size={23} stroke={colors.deepPurple} />
+                  )}
                 </View>
-                <AppText variant="label" numberOfLines={2}>
-                  {product.name}
-                </AppText>
-                <AppText variant="small" color={colors.secondary}>
-                  {product.category} · {product.stock_quantity} {product.unit}
-                </AppText>
-                <View style={styles.productBottom}>
-                  <AppText variant="amount" style={{ fontSize: 16 }}>
-                    {formatMoney(product.price_cents)}
+                <View style={styles.productDetails}>
+                  <AppText variant="label" numberOfLines={1}>
+                    {product.name}
                   </AppText>
-                  <View style={styles.addCircle}>
-                    {inCart ? (
-                      <AppText variant="small" color="#fff">
-                        {inCart.quantity}
-                      </AppText>
-                    ) : (
-                      <Plus size={16} stroke="#fff" />
-                    )}
+                  <AppText variant="small" color={colors.secondary} numberOfLines={1}>
+                    {saleCategory(product)} · {product.stock_quantity} {product.unit}
+                  </AppText>
+                  <View style={styles.productBottom}>
+                    <AppText variant="amount" style={{ fontSize: 16 }}>
+                      {formatMoney(product.price_cents)}
+                    </AppText>
+                    <View style={styles.addCircle}>
+                      {inCart ? <AppText variant="small" color="#fff">{inCart.quantity}</AppText> : <Plus size={16} stroke="#fff" />}
+                    </View>
                   </View>
                 </View>
               </Pressable>
@@ -160,6 +210,7 @@ export function SalesScreen() {
           })}
         </View>
       )}
+      </ScrollView>
       {lines.length ? (
         <Card style={styles.cartPreview}>
           <View style={styles.cartHead}>
@@ -181,20 +232,25 @@ export function SalesScreen() {
             <AppText variant="amount">{formatMoney(total)}</AppText>
           </View>
           <View style={styles.cartActions}>
-            <Pressable
+            <Pressable accessibilityRole="button" style={styles.clearCartButton}
               onPress={() => {
                 useCart.getState().clear();
               }}
             >
               <AppText variant="small" color={colors.danger}>
-                Clear
+                Clear sale
               </AppText>
             </Pressable>
-            <PrimaryButton
-              label="Review sale"
+            <Pressable
+              accessibilityRole="button"
               onPress={() => router.push("/sales/checkout")}
-              style={{ flex: 1, minHeight: 46 }}
-            />
+              style={styles.reviewSaleButton}
+            >
+              <View style={styles.reviewSaleSurface}>
+                <AppText variant="label" color="#FFFFFF">Review sale</AppText>
+                <ChevronRight size={18} stroke="#FFFFFF" />
+              </View>
+            </Pressable>
           </View>
         </Card>
       ) : null}
@@ -246,20 +302,23 @@ export function CheckoutScreen() {
       ),
     [lines],
   );
-  const [paidAmount, setPaidAmount] = useState("");
+  const [paidAmount, setPaidAmount] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
-  // eslint-disable-next-line react-hooks/set-state-in-effect -- keep the suggested payment amount in sync with the cart total.
   useEffect(() => {
-    setPaidAmount((total / 100).toFixed(2));
-  }, [total]);
-  // eslint-disable-next-line react-hooks/set-state-in-effect -- resolve the selected account from local SQLite.
-  useEffect(() => {
-    if (customerId) void getCustomer(db, ownerId, customerId).then(setCustomer);
-    else setCustomer(null);
+    let active = true;
+    void (customerId ? getCustomer(db, ownerId, customerId) : Promise.resolve(null)).then((value) => {
+      if (active) setCustomer(value);
+    });
+    return () => {
+      active = false;
+    };
   }, [db, ownerId, customerId]);
-  const paidCents = toCents(paidAmount);
+  const suggestedPaidAmount = (total / 100).toFixed(2);
+  const tenderedCents = Math.max(0, toCents(paidAmount ?? suggestedPaidAmount));
+  const paidCents = Math.min(tenderedCents, total);
   const balance = Math.max(0, total - paidCents);
+  const changeCents = method === "CASH" ? Math.max(0, tenderedCents - total) : 0;
   const completeSale = async () => {
     setError("");
     if (!lines.length) {
@@ -296,7 +355,8 @@ export function CheckoutScreen() {
               " added to " +
               (customer?.name ?? "the customer account") +
               "."
-          : "Receipt " + result.receiptNumber + " is ready.",
+          : "Receipt " + result.receiptNumber + " is ready." +
+              (changeCents > 0 ? " Give " + formatMoney(changeCents) + " change." : ""),
       );
       router.replace("/sales/history");
     } catch (value) {
@@ -312,23 +372,32 @@ export function CheckoutScreen() {
       title="Complete sale"
       subtitle="Check the basket, then record how it was paid."
       back
+      scroll={false}
+      contentStyle={styles.checkoutPage}
     >
-      <Card style={{ gap: 13 }}>
+      <ScrollView
+        style={styles.checkoutScroller}
+        contentContainerStyle={styles.checkoutContent}
+        keyboardShouldPersistTaps="handled"
+        showsVerticalScrollIndicator={false}
+      >
+      <Card style={styles.checkoutCard}>
         <SectionTitle>Order items</SectionTitle>
         {lines.map((line) => (
           <View key={line.productId} style={styles.orderRow}>
+            <View style={styles.checkoutProductArt}>
+              {imageSource({ name: line.name, image_uri: null }) ? (
+                <Image source={imageSource({ name: line.name, image_uri: null })!} resizeMode="contain" style={styles.checkoutProductImage} accessibilityLabel={`${line.name} product image`} />
+              ) : <Package size={18} stroke={colors.deepPurple} />}
+            </View>
             <View style={{ flex: 1 }}>
-              <AppText variant="label">{line.name}</AppText>
-              <AppText
-                variant="small"
-                color={colors.secondary}
-                style={{ marginTop: 3 }}
-              >
-                {formatMoney(line.priceCents)} each
-              </AppText>
+              <AppText variant="small" style={{ fontFamily: "Inter-SemiBold" }} numberOfLines={1}>{line.name}</AppText>
+              <AppText variant="small" color={colors.secondary}>{formatMoney(line.priceCents)} each</AppText>
             </View>
             <View style={styles.qtyControl}>
               <Pressable
+                accessibilityRole="button"
+                accessibilityLabel={`Remove one ${line.name}`}
                 onPress={() =>
                   useCart.getState().changeQuantity(line.productId, -1)
                 }
@@ -336,8 +405,10 @@ export function CheckoutScreen() {
               >
                 <Minus size={14} stroke={colors.deepPurple} />
               </Pressable>
-              <AppText variant="label">{line.quantity}</AppText>
+              <AppText variant="small">{line.quantity}</AppText>
               <Pressable
+                accessibilityRole="button"
+                accessibilityLabel={`Add one ${line.name}`}
                 onPress={() =>
                   useCart.getState().changeQuantity(line.productId, 1)
                 }
@@ -346,7 +417,7 @@ export function CheckoutScreen() {
                 <Plus size={14} stroke={colors.deepPurple} />
               </Pressable>
             </View>
-            <AppText variant="label">
+            <AppText variant="small" style={{ fontFamily: "Inter-SemiBold", minWidth: 43, textAlign: "right" }}>
               {formatMoney(line.priceCents * line.quantity)}
             </AppText>
           </View>
@@ -354,10 +425,6 @@ export function CheckoutScreen() {
         {!lines.length ? (
           <AppText color={colors.secondary}>Your basket is empty.</AppText>
         ) : null}
-        <View style={styles.totalRow}>
-          <AppText variant="heading">Total</AppText>
-          <AppText variant="amount">{formatMoney(total)}</AppText>
-        </View>
       </Card>
       {creditMode ? (
         <Card style={{ gap: 9 }}>
@@ -385,63 +452,64 @@ export function CheckoutScreen() {
           )}
         </Card>
       ) : null}
-      <Card style={{ gap: 12 }}>
+      <Card style={styles.checkoutCard}>
         <AppText variant="heading">Payment method</AppText>
-        {methods.map((item) => (
-          <Pressable
-            key={item.key}
-            onPress={() => setMethod(item.key)}
-            style={[
-              styles.methodRow,
-              method === item.key && styles.methodSelected,
-            ]}
-          >
-            <View style={styles.methodIcon}>{item.icon}</View>
-            <View style={{ flex: 1 }}>
-              <AppText variant="label">{item.title}</AppText>
-              <AppText
-                variant="small"
-                color={colors.secondary}
-                style={{ marginTop: 3 }}
-              >
-                {item.detail}
-              </AppText>
-            </View>
-            <View
-              style={[
-                styles.radio,
-                method === item.key && styles.radioSelected,
-              ]}
+        <View style={styles.methodOptions}>
+          {methods.map((item) => (
+            <Pressable
+              key={item.key}
+              accessibilityRole="radio"
+              accessibilityLabel={`${item.title}: ${item.detail}`}
+              accessibilityState={{ checked: method === item.key }}
+              onPress={() => setMethod(item.key)}
+              style={[styles.methodOption, method === item.key && styles.methodOptionSelected]}
             >
-              {method === item.key ? <View style={styles.radioDot} /> : null}
-            </View>
-          </Pressable>
-        ))}
-        {creditMode ? (
+              {item.icon}
+              <AppText variant="small" color={method === item.key ? colors.deepPurple : colors.secondary}>{item.key === "CARD" ? "Other" : item.title}</AppText>
+            </Pressable>
+          ))}
+        </View>
+        {creditMode || method === "CASH" ? (
           <Field
-            label="Amount received now"
+            label={method === "CASH" ? "Cash received" : "Amount received now"}
             keyboardType="decimal-pad"
-            value={paidAmount}
+            value={paidAmount ?? suggestedPaidAmount}
             onChangeText={setPaidAmount}
-            placeholder="0.00"
+            placeholder={suggestedPaidAmount}
           />
         ) : (
-          <View style={styles.balanceBox}>
-            <AppText variant="label" color={colors.secondary}>
-              Amount to receive
-            </AppText>
-            <AppText variant="amount">{formatMoney(total)}</AppText>
-          </View>
+          null
         )}
-        {creditMode && balance > 0 ? (
+        <View style={styles.totalRow}>
+          <AppText variant="label">Total</AppText>
+          <AppText variant="amount">{formatMoney(total)}</AppText>
+        </View>
+        {balance > 0 ? (
           <View style={styles.balanceBox}>
-            <AppText variant="label" color={colors.warning}>
-              Remaining balance
-            </AppText>
+            <View style={{ flex: 1 }}>
+              <AppText variant="label" color={colors.warning}>Remaining balance</AppText>
+              {!customerId ? <AppText variant="small" color={colors.secondary} style={{ marginTop: 3 }}>Link a customer to record this as pay later.</AppText> : null}
+            </View>
             <AppText variant="amount" color={colors.warning}>
               {formatMoney(balance)}
             </AppText>
           </View>
+        ) : null}
+        {changeCents > 0 ? (
+          <View style={styles.changeBox}>
+            <AppText variant="label" color={colors.success}>Change to give</AppText>
+            <AppText variant="amount" color={colors.success}>{formatMoney(changeCents)}</AppText>
+          </View>
+        ) : null}
+        {!creditMode && balance > 0 ? (
+          <Pressable
+            accessibilityRole="button"
+            style={styles.linkCustomerButton}
+            onPress={() => router.push({ pathname: "/credit/new-credit-sale", params: { preserveCart: "true" } })}
+          >
+            <AppText variant="label" color={colors.deepPurple}>Choose customer · record balance later</AppText>
+            <ChevronRight size={18} stroke={colors.deepPurple} />
+          </Pressable>
         ) : null}
       </Card>
       {error ? (
@@ -451,10 +519,12 @@ export function CheckoutScreen() {
           </AppText>
         </View>
       ) : null}
+      </ScrollView>
       <PrimaryButton
         label="Save sale"
         loading={busy}
         onPress={completeSale}
+        disabled={!lines.length || (balance > 0 && (!creditMode || !customerId))}
         icon={<Check size={19} stroke="#fff" />}
       />
     </Page>
@@ -467,7 +537,7 @@ export function SalesHistoryScreen() {
   const ownerId = session?.user.id ?? "";
   const [sales, setSales] = useState<SaleSummary[]>([]);
   const [refreshing, setRefreshing] = useState(false);
-  const load = async () => {
+  const refresh = async () => {
     setRefreshing(true);
     try {
       setSales(await listRecentSales(db, ownerId));
@@ -475,9 +545,14 @@ export function SalesHistoryScreen() {
       setRefreshing(false);
     }
   };
-  // eslint-disable-next-line react-hooks/set-state-in-effect, react-hooks/exhaustive-deps -- load local SQLite sales when the account scope changes.
   useEffect(() => {
-    void load();
+    let active = true;
+    void listRecentSales(db, ownerId).then((data) => {
+      if (active) setSales(data);
+    });
+    return () => {
+      active = false;
+    };
   }, [db, ownerId]);
   return (
     <Page
@@ -490,7 +565,7 @@ export function SalesHistoryScreen() {
         refreshControl={
           <RefreshControl
             refreshing={refreshing}
-            onRefresh={load}
+            onRefresh={refresh}
             tintColor={colors.purple}
           />
         }
@@ -566,70 +641,75 @@ export function SalesHistoryScreen() {
 }
 
 const styles = StyleSheet.create({
-  searchBox: {
-    minHeight: 54,
-    borderRadius: 14,
-    backgroundColor: "#FFFFFF",
-    borderColor: colors.border,
-    borderWidth: 1,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 9,
-    paddingHorizontal: 12,
-  },
-  categoryRow: { flexDirection: "row", alignItems: "center", gap: 9 },
+  checkoutPage: { flex: 1 },
+  checkoutScroller: { flex: 1 },
+  checkoutContent: { gap: 14, paddingBottom: 12 },
+  checkoutCard: { gap: 11, padding: 14, borderRadius: 18, borderColor: "#D4D7E3", backgroundColor: "#FFFFFF", shadowColor: "#25305A", shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.07, shadowRadius: 8, elevation: 2 },
+  checkoutProductArt: { width: 38, height: 42, borderRadius: 9, backgroundColor: "#F1EFFB", alignItems: "center", justifyContent: "center", overflow: "hidden" },
+  checkoutProductImage: { width: 34, height: 38 },
+  salesPage: { flex: 1 },
+  salesScroller: { flex: 1 },
+  salesScrollContent: { gap: 14, paddingBottom: 16 },
+  categoryHeader: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
+  categoryFilters: { flexDirection: "row", alignItems: "center", gap: 7, paddingVertical: 2 },
+  categoryFilter: { minHeight: 34, justifyContent: "center", paddingHorizontal: 13, borderRadius: 18, backgroundColor: "#F0F1F7" },
+  categoryFilterActive: { backgroundColor: colors.purple },
   empty: { alignItems: "center", gap: 10, padding: 18 },
   productGrid: { flexDirection: "row", flexWrap: "wrap", gap: 10 },
   productCard: {
     width: "48%",
-    flexGrow: 1,
+    minHeight: 154,
     backgroundColor: "#FFFFFF",
-    borderRadius: 17,
-    borderWidth: 1,
-    borderColor: colors.border,
-    padding: 12,
-    gap: 6,
-    minHeight: 172,
+    borderRadius: 18,
+    borderWidth: 1.25,
+    borderColor: "#D2D6E3",
+    padding: 9,
+    gap: 7,
+    shadowColor: "#25305A",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.08,
+    shadowRadius: 8,
+    elevation: 2,
   },
   productArt: {
-    width: 42,
-    height: 42,
-    backgroundColor: colors.lavenderTint,
+    width: "100%",
+    height: 62,
+    backgroundColor: "#F1EFFB",
     borderRadius: 13,
     alignItems: "center",
     justifyContent: "center",
-    marginBottom: 2,
+    overflow: "hidden",
   },
-  productBottom: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    marginTop: "auto",
-  },
+  productImage: { width: 58, height: 58 },
+  productDetails: { flex: 1, minWidth: 0, gap: 4 },
+  productBottom: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 6, marginTop: "auto", paddingTop: 4 },
   addCircle: {
-    width: 30,
-    height: 30,
-    borderRadius: 11,
+    width: 32,
+    height: 32,
+    borderRadius: 12,
     backgroundColor: colors.purple,
     alignItems: "center",
     justifyContent: "center",
   },
-  cartPreview: { gap: 13, borderColor: colors.purple },
+  cartPreview: { gap: 12, padding: 14, borderWidth: 1.5, borderColor: "#B9ADEE", backgroundColor: "#FFFFFF", shadowColor: colors.deepPurple, shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.08, shadowRadius: 8, elevation: 2 },
   cartHead: { flexDirection: "row", alignItems: "center", gap: 8 },
-  cartActions: { flexDirection: "row", alignItems: "center", gap: 15 },
+  cartActions: { flexDirection: "row", alignItems: "center", gap: 10 },
+  clearCartButton: { minHeight: 46, justifyContent: "center", paddingHorizontal: 13, borderRadius: 13, backgroundColor: "#FFF1F2", borderWidth: 1, borderColor: "#F3D5D9" },
+  reviewSaleButton: { flex: 1, minHeight: 50, overflow: "hidden", borderRadius: 14 },
+  reviewSaleSurface: { width: "100%", minHeight: 50, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 7, paddingHorizontal: 14, borderRadius: 14, backgroundColor: "#38239B" },
   orderRow: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 9,
-    paddingVertical: 7,
+    gap: 7,
+    paddingVertical: 6,
     borderBottomWidth: 1,
     borderColor: colors.border,
   },
-  qtyControl: { flexDirection: "row", alignItems: "center", gap: 9 },
+  qtyControl: { flexDirection: "row", alignItems: "center", gap: 5 },
   qtyButton: {
-    width: 28,
-    height: 28,
-    borderRadius: 9,
+    width: 24,
+    height: 24,
+    borderRadius: 8,
     backgroundColor: colors.lavenderTint,
     alignItems: "center",
     justifyContent: "center",
@@ -638,7 +718,9 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    paddingTop: 5,
+    paddingTop: 10,
+    borderTopWidth: 1,
+    borderColor: colors.border,
   },
   customerPill: {
     flexDirection: "row",
@@ -656,27 +738,21 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
-  methodRow: {
-    minHeight: 64,
-    borderRadius: 14,
+  methodOptions: { flexDirection: "row", gap: 8 },
+  methodOption: {
+    flex: 1,
+    minHeight: 42,
+    borderRadius: 12,
     borderWidth: 1,
     borderColor: colors.border,
+    backgroundColor: "#FFFFFF",
     flexDirection: "row",
     alignItems: "center",
-    gap: 11,
-    paddingHorizontal: 12,
-  },
-  methodSelected: { borderColor: colors.purple, backgroundColor: "#F8F6FF" },
-  methodIcon: {
-    width: 38,
-    height: 38,
-    borderRadius: 12,
-    backgroundColor: "#FFFFFF",
-    borderWidth: 1,
-    borderColor: colors.border,
-    alignItems: "center",
     justifyContent: "center",
+    gap: 5,
+    paddingHorizontal: 4,
   },
+  methodOptionSelected: { borderColor: colors.purple, backgroundColor: "#F4F0FF" },
   radio: {
     width: 20,
     height: 20,
@@ -698,9 +774,14 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "space-between",
     backgroundColor: "#FFF5DC",
+    borderWidth: 1,
+    borderColor: "#F1E0B0",
     borderRadius: 13,
     padding: 12,
+    gap: 12,
   },
+  changeBox: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", backgroundColor: "#E7F5EF", borderColor: "#CDE9DC", borderWidth: 1, borderRadius: 13, padding: 12 },
+  linkCustomerButton: { minHeight: 48, flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingHorizontal: 13, borderRadius: 13, borderWidth: 1, borderColor: "#CFC5F2", backgroundColor: "#F7F5FF" },
   errorBox: { padding: 12, borderRadius: 12, backgroundColor: "#FCEBED" },
   historyRow: {
     flexDirection: "row",

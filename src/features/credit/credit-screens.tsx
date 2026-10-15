@@ -17,6 +17,8 @@ export function CreditCustomersScreen() { return <CustomerList />; }
 export function CreditSaleCustomerPicker() { return <CustomerList selectForCreditSale />; }
 
 function CustomerList({ selectForCreditSale = false }: { selectForCreditSale?: boolean }) {
+  const params = useLocalSearchParams<{ preserveCart?: string }>();
+  const preserveCart = params.preserveCart === 'true';
   const db = useSQLiteContext();
   const { session } = useAuth();
   const ownerId = session?.user.id ?? '';
@@ -32,7 +34,12 @@ function CustomerList({ selectForCreditSale = false }: { selectForCreditSale?: b
   const save = async () => { setError(''); try { await createCustomer(db, ownerId, name, phone); setName(''); setPhone(''); setAdding(false); await load(); } catch (value) { setError(value instanceof Error ? value.message : 'Could not save this customer.'); } };
   const filtered = customers.filter((customer) => (customer.name + ' ' + (customer.phone ?? '')).toLowerCase().includes(search.toLowerCase()));
   const choose = (customer: Customer) => {
-    if (selectForCreditSale) { useCart.getState().clear(); useCart.getState().setCreditMode(true, customer.id); router.push('/sales/new'); }
+    if (selectForCreditSale) {
+      if (!preserveCart) useCart.getState().clear();
+      useCart.getState().setCreditMode(true, customer.id);
+      if (preserveCart) router.back();
+      else router.push('/sales/new');
+    }
     else router.push({ pathname: '/credit/[customerId]', params: { customerId: customer.id } });
   };
   return <Page title={selectForCreditSale ? 'Choose a customer' : 'Credit customers'} subtitle={selectForCreditSale ? 'Select who will receive this sale on account.' : 'Follow balances and repayments in one place.'} back={selectForCreditSale} right={!selectForCreditSale ? <Pressable onPress={() => setAdding((value) => !value)} hitSlop={8} style={styles.addIcon}><Plus size={20} stroke={colors.purple} /></Pressable> : null}>

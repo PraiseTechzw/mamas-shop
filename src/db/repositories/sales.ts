@@ -7,7 +7,7 @@ import { ensurePrimaryLocation } from './inventory';
 export async function listProductsForSale(db: SQLiteDatabase, ownerId: string, search = ''): Promise<Product[]> {
   const pattern = '%' + search.trim() + '%';
   return db.getAllAsync<Product>(`
-    SELECT id, name, sku, category, unit, price_cents, stock_quantity, reorder_level
+    SELECT id, name, sku, category, unit, price_cents, image_uri, stock_quantity, reorder_level
     FROM products WHERE owner_id = ? AND is_active = 1 AND stock_quantity > 0
       AND (name LIKE ? OR COALESCE(sku, '') LIKE ? OR category LIKE ?)
     ORDER BY name COLLATE NOCASE LIMIT 100

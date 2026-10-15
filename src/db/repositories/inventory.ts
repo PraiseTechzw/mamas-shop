@@ -23,6 +23,10 @@ export async function getProduct(db: SQLiteDatabase, ownerId: string, id: string
 export async function listProductBalances(db: SQLiteDatabase, ownerId: string, productId: string) {
   return db.getAllAsync<InventoryLocation & { quantity: number }>(`SELECT l.id, l.name, l.is_primary, COALESCE(b.quantity, 0) AS quantity FROM inventory_locations l LEFT JOIN inventory_balances b ON b.location_id = l.id AND b.product_id = ? AND b.owner_id = l.owner_id WHERE l.owner_id = ? ORDER BY l.is_primary DESC, l.name COLLATE NOCASE`, productId, ownerId);
 }
+export async function getLocationBalance(db: SQLiteDatabase, ownerId: string, productId: string, locationId: string) {
+  const balance = await db.getFirstAsync<{ quantity: number }>('SELECT quantity FROM inventory_balances WHERE owner_id = ? AND product_id = ? AND location_id = ?', ownerId, productId, locationId);
+  return balance?.quantity ?? 0;
+}
 export async function addProduct(db: SQLiteDatabase, ownerId: string, input: { name: string; sku: string; category: string; unit: string; priceCents: number; costCents: number; imageUri?: string | null; opening: number; reorder: number }) {
   if (!input.name.trim() || input.priceCents < 0 || input.costCents < 0 || input.opening < 0 || input.reorder < 0) throw new Error('Check the product details and quantities.');
   const id = Crypto.randomUUID(); const at = now();
