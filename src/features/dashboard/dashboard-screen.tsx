@@ -1,42 +1,125 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Pressable, RefreshControl, ScrollView, StyleSheet, View } from 'react-native';
+import Svg, { Circle } from 'react-native-svg';
 import { router } from 'expo-router';
 import { useSQLiteContext } from 'expo-sqlite';
-import { ArrowRight, ArrowUpRight, Banknote, CircleAlert, CreditCard, Plus, ReceiptText, Users } from 'lucide-react-native';
+import { Banknote, Bell, CircleAlert, CreditCard, MapPin, ReceiptText } from 'lucide-react-native';
 import { colors } from '@/constants/theme';
-import { formatMoney, formatDateTime } from '@/lib/format';
+import { formatMoney } from '@/lib/format';
 import { getDashboardData, type DashboardData } from '@/db/repositories/dashboard';
 import { useAuth } from '@/features/auth/auth-context';
-import { useCart } from '@/stores/cart';
-import { AppText, Card, PrimaryButton, SectionTitle } from '@/components/ui/primitives';
-import { IllustratedEmptyState } from '@/components/feedback/illustrated-empty-state';
+import { AppText, Card, SectionTitle } from '@/components/ui/primitives';
 
-const emptyData: DashboardData = { salesTodayCents: 0, salesTodayCount: 0, paymentsTodayCents: 0, creditOutstandingCents: 0, activeCustomers: 0, lowStockCount: 0, recentSales: [], weeklySales: [] };
+const emptyData: DashboardData = { salesTodayCents: 0, salesTodayCount: 0, paymentsTodayCents: 0, creditOutstandingCents: 0, lowStockCount: 0, salesBySeller: [] };
+const sellerColors = ['#4D35D7', '#F5A623', '#23A47A', '#E94E64', '#4388E8'];
 
 export function DashboardScreen() {
   const db = useSQLiteContext();
   const { session } = useAuth();
-  const clearCart = useCart((state) => state.clear);
   const [data, setData] = useState(emptyData);
   const [refreshing, setRefreshing] = useState(false);
-  const firstName = String(session?.user.user_metadata?.full_name ?? session?.user.email?.split('@')[0] ?? 'there').split(' ')[0];
+  const [breakdown, setBreakdown] = useState<'location' | 'seller'>('location');
+  const firstName = String(session?.user.user_metadata?.full_name ?? session?.user.email?.split('@')[0] ?? 'Mama').split(' ')[0];
   const load = useCallback(async () => { setRefreshing(true); try { setData(await getDashboardData(db, session?.user.id ?? '')); } finally { setRefreshing(false); } }, [db, session?.user.id]);
   // eslint-disable-next-line react-hooks/set-state-in-effect -- refresh dashboard totals from local SQLite on screen entry.
   useEffect(() => { void load(); }, [load]);
-  const startSale = () => { clearCart(); router.push('/sales/new'); };
-  const max = Math.max(1, ...data.weeklySales.map((day) => day.totalCents));
   return <ScrollView className="flex-1 bg-canvas" refreshControl={<RefreshControl refreshing={refreshing} onRefresh={load} tintColor={colors.purple} />} contentContainerStyle={styles.page}>
-    <View style={styles.topbar}><View style={styles.greeting}><AppText variant="small" color={colors.secondary}>YOUR SHOP AT A GLANCE</AppText><AppText variant="title">Good morning, {firstName}</AppText><AppText color={colors.secondary}>Here’s how the shop is doing today.</AppText></View><View style={styles.avatar}><AppText variant="label" color={colors.deepPurple}>{firstName.slice(0, 1).toUpperCase()}</AppText></View></View>
-    <Card style={styles.heroCard}><View style={{ flex: 1, gap: 6 }}><AppText variant="small" color="#E9E4FF">TODAY’S SALES</AppText><AppText variant="title" color="#FFFFFF" style={{ fontSize: 30 }}>{formatMoney(data.salesTodayCents)}</AppText><View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}><ArrowUpRight size={15} stroke="#C8F3DE" /><AppText variant="small" color="#C8F3DE">{data.salesTodayCount} sales recorded</AppText></View></View><View style={styles.heroIcon}><Banknote stroke={colors.deepPurple} size={25} /></View></Card>
-    <View style={styles.metricGrid}><Metric title="Received" value={formatMoney(data.paymentsTodayCents)} icon={<Banknote size={18} stroke={colors.success} />} tint="#E7F5EF" /><Metric title="Credit owed" value={formatMoney(data.creditOutstandingCents)} icon={<CreditCard size={18} stroke={colors.warning} />} tint="#FFF5DC" /><Metric title="Customers" value={String(data.activeCustomers)} icon={<Users size={18} stroke={colors.info} />} tint="#EAF2FF" /><Metric title="Low stock" value={String(data.lowStockCount)} icon={<CircleAlert size={18} stroke={colors.danger} />} tint="#FCEBED" /> </View>
-    <View style={styles.sectionHeading}><SectionTitle>Quick actions</SectionTitle></View>
-    <View style={styles.quickGrid}><QuickAction label="New sale" icon={<Plus stroke="#FFFFFF" size={19} />} onPress={startSale} primary /><QuickAction label="Credit customers" icon={<Users stroke={colors.deepPurple} size={19} />} onPress={() => router.push('/credit/customers')} /><QuickAction label="Sales history" icon={<ReceiptText stroke={colors.deepPurple} size={19} />} onPress={() => router.push('/sales/history')} /><QuickAction label="Record repayment" icon={<CreditCard stroke={colors.deepPurple} size={19} />} onPress={() => router.push('/credit/customers')} /></View>
-    <View style={styles.sectionHeading}><SectionTitle action="See all" onAction={() => router.push('/sales/history')}>Recent sales</SectionTitle></View>
-    {data.recentSales.length ? <Card style={{ paddingVertical: 2 }}>{data.recentSales.map((sale, index) => <View key={sale.id} style={[styles.recentRow, index < data.recentSales.length - 1 && styles.separator]}><View style={styles.receiptIcon}><ReceiptText size={17} stroke={colors.purple} /></View><View style={{ flex: 1 }}><AppText variant="label">{sale.customer_name || sale.receipt_number}</AppText><AppText variant="small" color={colors.secondary} style={{ marginTop: 3 }}>{formatDateTime(sale.created_at)} · {sale.status === 'PAID' ? 'Paid' : 'Credit balance'}</AppText></View><AppText variant="label">{formatMoney(sale.total_cents)}</AppText></View>)}</Card> : <IllustratedEmptyState image={require('@/assets/images/shop-illustrations/inventory/empty-cart.png')} title="Your first sale is waiting" description="Once your products are added, sales and daily totals will appear here." action={<PrimaryButton label="Start a sale" onPress={startSale} />} />}
-    <Card style={styles.chartCard}><View style={styles.sectionHeading}><View><AppText variant="heading">Sales this week</AppText><AppText variant="small" color={colors.secondary} style={{ marginTop: 3 }}>Recorded sales · USD</AppText></View><ArrowRight stroke={colors.secondary} size={18} /></View><View style={styles.chart}>{data.weeklySales.map((day, index) => <View key={day.label + index} style={styles.chartColumn}><AppText variant="small" color={colors.secondary}>{day.totalCents ? Math.round(day.totalCents / 100) : ''}</AppText><View style={styles.barTrack}><View style={[styles.bar, { height: Math.max(5, Math.round((day.totalCents / max) * 84)), backgroundColor: index === data.weeklySales.length - 1 ? colors.purple : '#BDB2FA' }]} /></View><AppText variant="small" color={colors.secondary}>{day.label}</AppText></View>)}</View></Card>
+    <View style={styles.profileRow}>
+      <View style={styles.profileAvatar}><AppText variant="label" color={colors.deepPurple}>{firstName.slice(0, 1).toUpperCase()}</AppText></View>
+      <View style={styles.profileText}><AppText variant="label">{firstName}</AppText><AppText variant="small" color={colors.secondary}>Owner</AppText></View>
+      <Pressable accessibilityRole="button" accessibilityLabel="Notification settings" onPress={() => router.push('/settings/notifications')} style={styles.bellButton}><Bell size={20} stroke={colors.deepPurple} /></Pressable>
+    </View>
+    <View style={styles.greeting}>
+      <AppText variant="heading" style={styles.greetingTitle}>Good morning, {firstName}!</AppText>
+      <AppText color={colors.secondary}>Here’s what’s happening with your shop today.</AppText>
+    </View>
+
+    <View style={styles.metrics}>
+      <MetricCard title="Today’s Sales" value={formatMoney(data.salesTodayCents)} caption={`${data.salesTodayCount} ${data.salesTodayCount === 1 ? 'sale' : 'sales'} today`} icon={<Banknote size={17} stroke="#1A9A70" />} tone="green" />
+      <MetricCard title="Cash Received" value={formatMoney(data.paymentsTodayCents)} caption="Payments recorded today" icon={<Banknote size={17} stroke="#338A72" />} tone="mint" />
+      <MetricCard title="Credit Owed" value={formatMoney(data.creditOutstandingCents)} caption="Outstanding customer credit" icon={<CreditCard size={17} stroke="#EC5366" />} tone="rose" />
+      <MetricCard title="Low Stock" value={`${data.lowStockCount} items`} caption={data.lowStockCount ? 'Restock needed' : 'Stock levels look good'} icon={<CircleAlert size={17} stroke="#ED8B22" />} tone="orange" />
+    </View>
+
+    <View style={styles.breakdownHeading}><SectionTitle>Sales Breakdown</SectionTitle></View>
+    <Card style={styles.breakdownCard}>
+      <View style={styles.segmented}>
+        <Pressable onPress={() => setBreakdown('location')} style={[styles.segment, breakdown === 'location' && styles.segmentActive]}><AppText variant="small" color={breakdown === 'location' ? colors.deepPurple : colors.secondary}>By Location</AppText></Pressable>
+        <Pressable onPress={() => setBreakdown('seller')} style={[styles.segment, breakdown === 'seller' && styles.segmentActive]}><AppText variant="small" color={breakdown === 'seller' ? colors.deepPurple : colors.secondary}>By Seller</AppText></Pressable>
+      </View>
+      {breakdown === 'seller' && data.salesBySeller.length > 0 ? <SellerBreakdown rows={data.salesBySeller} ownerId={session?.user.id ?? ''} ownerName={firstName} /> : <View style={styles.breakdownEmpty}>
+        {breakdown === 'location' ? <MapPin size={22} stroke={colors.purple} /> : <ReceiptText size={22} stroke={colors.purple} />}
+        <AppText variant="label" style={{ marginTop: 8 }}>{breakdown === 'location' ? 'Sales aren’t assigned to locations yet' : 'Your first sale will appear here'}</AppText>
+        <AppText variant="small" color={colors.secondary} style={styles.emptyHint}>{breakdown === 'location' ? 'Location tracking for sales is not set up yet.' : 'Seller totals appear after you record sales.'}</AppText>
+      </View>}
+    </Card>
   </ScrollView>;
 }
 
-function Metric({ title, value, icon, tint }: { title: string; value: string; icon: React.ReactNode; tint: string }) { return <Card style={styles.metric}><View style={[styles.metricIcon, { backgroundColor: tint }]}>{icon}</View><AppText variant="small" color={colors.secondary}>{title}</AppText><AppText variant="amount" style={{ fontSize: 18 }} numberOfLines={1}>{value}</AppText></Card>; }
-function QuickAction({ label, icon, onPress, primary = false }: { label: string; icon: React.ReactNode; onPress: () => void; primary?: boolean }) { return <Pressable onPress={onPress} style={({ pressed }) => [styles.quickAction, primary && styles.quickActionPrimary, pressed && { opacity: 0.82 }]}><View style={[styles.quickIcon, primary && { backgroundColor: 'rgba(255,255,255,0.17)' }]}>{icon}</View><AppText variant="label" color={primary ? '#FFFFFF' : colors.deepPurple}>{label}</AppText><ArrowRight size={15} stroke={primary ? '#FFFFFF' : colors.secondary} /></Pressable>; }
-const styles = StyleSheet.create({ page: { padding: 20, paddingTop: 18, paddingBottom: 28, gap: 18 }, topbar: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }, greeting: { flex: 1, gap: 4 }, avatar: { width: 46, height: 46, borderRadius: 16, backgroundColor: colors.gold, alignItems: 'center', justifyContent: 'center' }, heroCard: { minHeight: 132, backgroundColor: colors.deepPurple, borderColor: colors.deepPurple, borderRadius: 22, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', padding: 20 }, heroIcon: { width: 52, height: 52, borderRadius: 17, backgroundColor: colors.gold, alignItems: 'center', justifyContent: 'center' }, metricGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 }, metric: { width: '48%', flexGrow: 1, minWidth: '44%', padding: 13, gap: 5 }, metricIcon: { width: 34, height: 34, alignItems: 'center', justifyContent: 'center', borderRadius: 11, marginBottom: 2 }, sectionHeading: { marginTop: 2 }, quickGrid: { gap: 9 }, quickAction: { minHeight: 58, backgroundColor: '#FFFFFF', borderWidth: 1, borderColor: colors.border, borderRadius: 15, paddingHorizontal: 12, flexDirection: 'row', alignItems: 'center', gap: 11 }, quickActionPrimary: { backgroundColor: colors.purple, borderColor: colors.purple }, quickIcon: { width: 34, height: 34, borderRadius: 11, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.lavenderTint }, recentRow: { minHeight: 66, paddingVertical: 10, flexDirection: 'row', alignItems: 'center', gap: 11 }, separator: { borderBottomWidth: 1, borderColor: colors.border }, receiptIcon: { width: 37, height: 37, borderRadius: 12, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.lavenderTint }, emptyCard: { alignItems: 'center', gap: 9, padding: 18 }, chartCard: { gap: 14 }, chart: { height: 126, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-end', gap: 5 }, chartColumn: { flex: 1, alignItems: 'center', gap: 5, height: '100%', justifyContent: 'flex-end' }, barTrack: { height: 88, width: '75%', justifyContent: 'flex-end', alignItems: 'center' }, bar: { width: '100%', minHeight: 4, borderTopLeftRadius: 7, borderTopRightRadius: 7 } });
+function MetricCard({ title, value, caption, icon, tone }: { title: string; value: string; caption: string; icon: React.ReactNode; tone: 'green' | 'mint' | 'rose' | 'orange' }) {
+  return <Card style={{ ...styles.metricCard, backgroundColor: metricTones[tone].surface, borderColor: metricTones[tone].border }}>
+    <View style={styles.metricTitleRow}><View style={[styles.metricIcon, { backgroundColor: metricTones[tone].icon }]}>{icon}</View><AppText variant="small" color={colors.text} numberOfLines={1} style={styles.metricTitle}>{title}</AppText></View>
+    <AppText variant="amount" numberOfLines={1} style={styles.metricValue}>{value}</AppText>
+    <AppText variant="small" color={metricTones[tone].accent} numberOfLines={1} style={styles.metricCaption}>{caption}</AppText>
+  </Card>;
+}
+
+function SellerBreakdown({ rows, ownerId, ownerName }: { rows: DashboardData['salesBySeller']; ownerId: string; ownerName: string }) {
+  const total = rows.reduce((sum, row) => sum + row.totalCents, 0);
+  const circumference = 2 * Math.PI * 55;
+  let offset = 0;
+  return <View style={styles.sellerBreakdown}>
+    <View style={styles.donutWrap}>
+      <Svg width={148} height={148} viewBox="0 0 148 148">
+        <Circle cx={74} cy={74} r={55} fill="none" stroke="#EDEBFA" strokeWidth={18} />
+        {total > 0 ? rows.map((row, index) => {
+          const length = (row.totalCents / total) * circumference;
+          const currentOffset = offset;
+          offset += length;
+          return <Circle key={row.sellerId ?? 'unassigned'} cx={74} cy={74} r={55} fill="none" stroke={sellerColors[index % sellerColors.length]} strokeWidth={18} strokeDasharray={`${length} ${circumference - length}`} strokeDashoffset={-currentOffset} transform="rotate(-90 74 74)" />;
+        }) : null}
+      </Svg>
+      <View style={styles.donutCenter}><AppText variant="small" color={colors.secondary}>Sales</AppText><AppText variant="label">{rows.reduce((sum, row) => sum + row.saleCount, 0)}</AppText></View>
+    </View>
+    <View style={styles.sellerLegend}>{rows.map((row, index) => <View key={row.sellerId ?? 'unassigned'} style={styles.legendRow}><View style={[styles.legendDot, { backgroundColor: sellerColors[index % sellerColors.length] }]} /><AppText variant="small" style={styles.legendName} numberOfLines={1}>{row.sellerId === ownerId ? ownerName : row.sellerId ? 'Team seller' : 'Unassigned'}</AppText><AppText variant="small" color={colors.secondary}>{total ? Math.round((row.totalCents / total) * 100) : 0}%</AppText><AppText variant="small" style={styles.legendAmount}>{formatMoney(row.totalCents)}</AppText></View>)}</View>
+  </View>;
+}
+
+const metricTones = {
+  green: { surface: '#F0FBF7', border: '#DFF5EC', icon: '#DCF5EB', accent: '#18865F' },
+  mint: { surface: '#F0FAF8', border: '#E0F3EF', icon: '#DDF3ED', accent: '#20896F' },
+  rose: { surface: '#FFF4F5', border: '#FBE7EA', icon: '#FFE2E6', accent: '#D64C5E' },
+  orange: { surface: '#FFF8EE', border: '#F9EEDB', icon: '#FFEBD1', accent: '#D77B1B' },
+};
+
+const styles = StyleSheet.create({
+  page: { padding: 18, paddingTop: 14, paddingBottom: 30, gap: 15 },
+  profileRow: { flexDirection: 'row', alignItems: 'center', gap: 9 },
+  profileAvatar: { width: 38, height: 38, borderRadius: 19, backgroundColor: '#F6D9BC', alignItems: 'center', justifyContent: 'center', borderWidth: 2, borderColor: '#FFFFFF' },
+  profileText: { flex: 1, gap: 1 },
+  bellButton: { width: 40, height: 40, borderRadius: 14, backgroundColor: '#FFFFFF', borderWidth: 1, borderColor: colors.border, alignItems: 'center', justifyContent: 'center' },
+  greeting: { gap: 3, marginTop: 1, marginBottom: 2 },
+  greetingTitle: { fontSize: 21, color: colors.text },
+  metrics: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
+  metricCard: { width: '48%', flexGrow: 1, minWidth: '45%', padding: 12, gap: 7, borderRadius: 17 },
+  metricTitleRow: { flexDirection: 'row', alignItems: 'center', gap: 7 },
+  metricIcon: { width: 25, height: 25, alignItems: 'center', justifyContent: 'center', borderRadius: 8 },
+  metricTitle: { flex: 1, fontFamily: 'Inter-Medium', fontSize: 11 },
+  metricValue: { fontSize: 19, lineHeight: 23 },
+  metricCaption: { fontSize: 9, lineHeight: 12 },
+  breakdownHeading: { marginTop: 1, marginBottom: -6 },
+  breakdownCard: { padding: 12, gap: 11, borderRadius: 18 },
+  segmented: { flexDirection: 'row', gap: 7 },
+  segment: { flex: 1, minHeight: 29, alignItems: 'center', justifyContent: 'center', borderRadius: 16, backgroundColor: '#F1F3F8' },
+  segmentActive: { backgroundColor: '#EBE9FD' },
+  breakdownEmpty: { minHeight: 190, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 24, paddingVertical: 20, borderRadius: 15, backgroundColor: '#FAFAFE' },
+  emptyHint: { textAlign: 'center', marginTop: 4, lineHeight: 16 },
+  sellerBreakdown: { minHeight: 200, flexDirection: 'row', alignItems: 'center', gap: 12 },
+  donutWrap: { width: 150, height: 150, alignItems: 'center', justifyContent: 'center' },
+  donutCenter: { position: 'absolute', alignItems: 'center', justifyContent: 'center' },
+  sellerLegend: { flex: 1, gap: 12 },
+  legendRow: { flexDirection: 'row', alignItems: 'center', gap: 5 },
+  legendDot: { width: 7, height: 7, borderRadius: 4 },
+  legendName: { flex: 1 },
+  legendAmount: { width: 59, textAlign: 'right' },
+});

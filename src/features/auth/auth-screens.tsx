@@ -1,5 +1,5 @@
-import { useRef, useState, type ReactNode } from 'react';
-import { ActivityIndicator, Image, ImageBackground, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, TextInput, View } from 'react-native';
+import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
+import { ActivityIndicator, Dimensions, Image, ImageBackground, Keyboard, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Svg, { Defs, LinearGradient, Path, Rect, Stop } from 'react-native-svg';
 import { router } from 'expo-router';
@@ -100,10 +100,48 @@ export function LoginScreen() {
   const fullNameInput = useRef<TextInput>(null);
   const emailInput = useRef<TextInput>(null);
   const passwordInput = useRef<TextInput>(null);
+  const loginScroll = useRef<ScrollView>(null);
+  const focusedInput = useRef<TextInput | null>(null);
+  const keyboardHeight = useRef(0);
+  const scrollOffset = useRef(0);
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
   const [busy, setBusy] = useState(false);
+
+  const keepFocusedInputVisible = useCallback(() => {
+    const input = focusedInput.current;
+    const keyboard = keyboardHeight.current;
+    if (!input || keyboard <= 0) return;
+
+    input.measureInWindow((_x, y, _width, height) => {
+      const visibleBottom = Dimensions.get('window').height - keyboard - 20;
+      const overflow = y + height - visibleBottom;
+      if (overflow > 0) {
+        loginScroll.current?.scrollTo({ y: Math.max(0, scrollOffset.current + overflow), animated: true });
+      }
+    });
+  }, []);
+
+  const focusField = useCallback((input: TextInput | null) => {
+    focusedInput.current = input;
+    setTimeout(keepFocusedInputVisible, 120);
+    setTimeout(keepFocusedInputVisible, 320);
+  }, [keepFocusedInputVisible]);
+
+  useEffect(() => {
+    const showSubscription = Keyboard.addListener('keyboardDidShow', (event) => {
+      keyboardHeight.current = event.endCoordinates.height;
+      setTimeout(keepFocusedInputVisible, 80);
+    });
+    const hideSubscription = Keyboard.addListener('keyboardDidHide', () => {
+      keyboardHeight.current = 0;
+    });
+    return () => {
+      showSubscription.remove();
+      hideSubscription.remove();
+    };
+  }, [keepFocusedInputVisible]);
 
   const submit = async () => {
     setError('');
@@ -151,7 +189,7 @@ export function LoginScreen() {
 
   return <SafeAreaView className="flex-1 bg-canvas" edges={['top', 'bottom']}>
     <KeyboardAvoidingView className="flex-1 bg-canvas" behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
-      <ScrollView className="flex-1 bg-canvas" keyboardDismissMode="none" keyboardShouldPersistTaps="always" contentContainerStyle={styles.loginPage}>
+      <ScrollView ref={loginScroll} className="flex-1 bg-canvas" keyboardDismissMode="none" keyboardShouldPersistTaps="always" scrollEventThrottle={16} onScroll={(event) => { scrollOffset.current = event.nativeEvent.contentOffset.y; }} contentContainerStyle={styles.loginPage}>
         <Pressable accessibilityRole="button" accessibilityLabel="Back to welcome screen" onPress={() => router.replace('/(auth)/welcome')} hitSlop={10} style={styles.backButton}>
           <ArrowLeft size={18} stroke={colors.deepPurple} />
         </Pressable>
@@ -161,10 +199,10 @@ export function LoginScreen() {
           <AppText color={colors.secondary} style={styles.loginSubtitle}>{creating ? 'Set up your sign-in to manage your business.' : 'Sign in to continue managing your business.'}</AppText>
         </View>
         <View style={styles.form}>
-          {creating ? <Field key="full-name" label="Your name" placeholder="e.g. Mama Moyo" icon={<UserRound size={18} color={colors.secondary} />} focusAccent inputRef={fullNameInput} autoCapitalize="words" defaultValue="" onChangeText={(value) => { fullName.current = value; }} onSubmitEditing={() => emailInput.current?.focus()} returnKeyType="next" submitBehavior="submit" /> : null}
-          <Field key="email" label="Email address" placeholder="you@example.com" icon={<Mail size={18} color={colors.secondary} />} focusAccent inputRef={emailInput} keyboardType="email-address" autoCapitalize="none" autoCorrect={false} defaultValue="" onChangeText={(value) => { email.current = value; }} onSubmitEditing={() => passwordInput.current?.focus()} returnKeyType="next" submitBehavior="submit" />
+          {creating ? <Field key="full-name" label="Your name" placeholder="e.g. Mama Moyo" icon={<UserRound size={18} color={colors.secondary} />} focusAccent inputRef={fullNameInput} onFocus={() => focusField(fullNameInput.current)} autoCapitalize="words" defaultValue="" onChangeText={(value) => { fullName.current = value; }} onSubmitEditing={() => emailInput.current?.focus()} returnKeyType="next" submitBehavior="submit" /> : null}
+          <Field key="email" label="Email address" placeholder="you@example.com" icon={<Mail size={18} color={colors.secondary} />} focusAccent inputRef={emailInput} onFocus={() => focusField(emailInput.current)} keyboardType="email-address" autoCapitalize="none" autoCorrect={false} defaultValue="" onChangeText={(value) => { email.current = value; }} onSubmitEditing={() => passwordInput.current?.focus()} returnKeyType="next" submitBehavior="submit" />
           <View>
-            <Field key="password" label="Password" placeholder="Enter your password" icon={<LockKeyhole size={18} color={colors.secondary} />} focusAccent inputRef={passwordInput} inputStyle={styles.passwordInput} secureTextEntry={!showPassword} defaultValue="" onChangeText={(value) => { password.current = value; }} onSubmitEditing={submit} returnKeyType="go" />
+            <Field key="password" label="Password" placeholder="Enter your password" icon={<LockKeyhole size={18} color={colors.secondary} />} focusAccent inputRef={passwordInput} onFocus={() => focusField(passwordInput.current)} inputStyle={styles.passwordInput} secureTextEntry={!showPassword} defaultValue="" onChangeText={(value) => { password.current = value; }} onSubmitEditing={submit} returnKeyType="go" />
             <Pressable accessibilityRole="button" accessibilityLabel={showPassword ? 'Hide password' : 'Show password'} hitSlop={10} onPress={() => setShowPassword((value) => !value)} style={styles.passwordEye}>
               {showPassword ? <EyeOff size={19} stroke={colors.secondary} /> : <Eye size={19} stroke={colors.secondary} />}
             </Pressable>
