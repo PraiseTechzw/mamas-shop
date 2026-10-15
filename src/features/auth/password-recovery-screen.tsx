@@ -14,17 +14,15 @@ export function PasswordRecoveryScreen() {
   const [error, setError] = useState('');
   const [password, setPassword] = useState('');
   const [confirmation, setConfirmation] = useState('');
+  const linkError = !supabase
+    ? 'Password recovery is unavailable until Supabase is configured.'
+    : !authCode && !ready
+      ? 'This password reset link is missing or has expired. Request a new one from the login screen.'
+      : '';
 
   useEffect(() => {
     let active = true;
-    if (!supabase) {
-      setError('Password recovery is unavailable until Supabase is configured.');
-      return () => { active = false; };
-    }
-    if (!authCode) {
-      setError('This password reset link is missing or has expired. Request a new one from the login screen.');
-      return () => { active = false; };
-    }
+    if (!supabase || !authCode) return () => { active = false; };
     void supabase.auth.exchangeCodeForSession(authCode).then(({ error: exchangeError }) => {
       if (!active) return;
       if (exchangeError) setError('This password reset link has expired. Request a new one from the login screen.');
@@ -61,8 +59,8 @@ export function PasswordRecoveryScreen() {
         {error ? <AppText variant="small" color={colors.danger}>{error}</AppText> : null}
         <PrimaryButton label="Update password" loading={busy} onPress={()=>void save()}/>
       </> : null}
-      {!ready && error ? <>
-        <AppText color={colors.danger}>{error}</AppText>
+      {!ready && (error || linkError) ? <>
+        <AppText color={colors.danger}>{error || linkError}</AppText>
         <PrimaryButton label="Return to log in" onPress={()=>router.replace('/(auth)/login')}/>
       </> : null}
     </Card>

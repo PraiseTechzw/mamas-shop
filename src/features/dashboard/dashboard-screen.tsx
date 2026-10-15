@@ -38,7 +38,7 @@ export function DashboardScreen() {
 
     <View style={styles.metrics}>
       <MetricCard title="Today’s Sales" value={formatMoney(data.salesTodayCents)} caption={`${data.salesTodayCount} ${data.salesTodayCount === 1 ? 'sale' : 'sales'} today`} icon={<Banknote size={17} stroke="#1A9A70" />} tone="green" />
-      <MetricCard title="Cash Received" value={formatMoney(data.paymentsTodayCents)} caption="Payments recorded today" icon={<Banknote size={17} stroke="#338A72" />} tone="mint" />
+      <MetricCard title="Received today" value={formatMoney(data.paymentsTodayCents)} caption="Sales payments and repayments" icon={<Banknote size={17} stroke="#338A72" />} tone="mint" />
       <MetricCard title="Credit Owed" value={formatMoney(data.creditOutstandingCents)} caption="Outstanding customer credit" icon={<CreditCard size={17} stroke="#EC5366" />} tone="rose" />
       <MetricCard title="Low Stock" value={`${data.lowStockCount} items`} caption={data.lowStockCount ? 'Restock needed' : 'Stock levels look good'} icon={<CircleAlert size={17} stroke="#ED8B22" />} tone="orange" />
     </View>

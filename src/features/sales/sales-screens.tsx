@@ -108,9 +108,8 @@ export function SalesScreen() {
   }, [db, ownerId, session?.user.email, session?.user.user_metadata?.full_name, locationId, sellerId, setLocationId, setSellerId, revision]);
   useEffect(() => {
     let active = true;
-    setProductLoadError('');
     void listProductsForSale(db, ownerId, search, locationId).then((data) => {
-      if (active) setRows(data);
+      if (active) { setProductLoadError(''); setRows(data); }
     }).catch((value: unknown) => {
       if (active) setProductLoadError(value instanceof Error ? value.message : 'Products could not be loaded. Check your connection and retry.');
     });
@@ -352,29 +351,30 @@ export function CheckoutScreen() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [lookupError, setLookupError] = useState('');
+  const [lookupRetry, setLookupRetry] = useState(0);
   useEffect(() => {
     let active = true;
-    setLookupError('');
     void (customerId ? getCustomer(db, ownerId, customerId) : Promise.resolve(null)).then((value) => {
-      if (active) { setCustomer(value); if (customerId && !value) setLookupError('This customer could not be found on this device. Choose the customer again.'); }
+      if (active) { setLookupError(''); setCustomer(value); if (customerId && !value) setLookupError('This customer could not be found on this device. Choose the customer again.'); }
     }).catch((value: unknown) => {
       if (active) setLookupError(value instanceof Error ? value.message : 'Customer details could not be loaded.');
     });
     return () => {
       active = false;
     };
-  }, [db, ownerId, customerId]);
+  }, [db, ownerId, customerId, lookupRetry]);
   useEffect(() => {
     let active = true;
     void Promise.all([listSellers(db, ownerId), listLocations(db, ownerId)]).then(([sellers, locations]) => {
       if (!active) return;
+      setLookupError('');
       setSellerName(sellers.find((seller) => seller.id === sellerId)?.name ?? 'Choose seller');
       setLocationName(locations.find((location) => location.id === locationId)?.name ?? 'Choose location');
     }).catch((value: unknown) => {
       if (active) setLookupError(value instanceof Error ? value.message : 'Seller and location details could not be loaded.');
     });
     return () => { active = false; };
-  }, [db, ownerId, sellerId, locationId]);
+  }, [db, ownerId, sellerId, locationId, lookupRetry]);
   const suggestedPaidAmount = (total / 100).toFixed(2);
   const tenderedCents = Math.max(0, toCents(paidAmount ?? suggestedPaidAmount));
   const paidCents = Math.min(tenderedCents, total);
@@ -610,7 +610,7 @@ export function CheckoutScreen() {
           </Pressable>
         ) : null}
       </Card>
-      {lookupError ? <View style={styles.errorBox}><AppText variant="small" color={colors.danger}>{lookupError}</AppText></View> : null}
+      {lookupError ? <View style={styles.errorBox}><AppText variant="small" color={colors.danger}>{lookupError}</AppText><Pressable accessibilityRole="button" onPress={()=>setLookupRetry((value)=>value+1)}><AppText variant="label" color={colors.deepPurple}>Retry lookup</AppText></Pressable></View> : null}
       {error ? (
         <View style={styles.errorBox}>
           <AppText variant="small" color={colors.danger}>
