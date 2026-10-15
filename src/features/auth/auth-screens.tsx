@@ -150,8 +150,8 @@ export function LoginScreen() {
   };
 
   return <SafeAreaView className="flex-1 bg-canvas" edges={['top', 'bottom']}>
-    <KeyboardAvoidingView className="flex-1 bg-canvas" behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-      <ScrollView className="flex-1 bg-canvas" keyboardShouldPersistTaps="always" contentContainerStyle={styles.loginPage}>
+    <KeyboardAvoidingView className="flex-1 bg-canvas" behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
+      <ScrollView className="flex-1 bg-canvas" keyboardDismissMode="none" keyboardShouldPersistTaps="always" contentContainerStyle={styles.loginPage}>
         <Pressable accessibilityRole="button" accessibilityLabel="Back to welcome screen" onPress={() => router.replace('/(auth)/welcome')} hitSlop={10} style={styles.backButton}>
           <ArrowLeft size={18} stroke={colors.deepPurple} />
         </Pressable>

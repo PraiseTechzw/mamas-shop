@@ -10,6 +10,7 @@
     "backgroundColor": "#F7F7FC",
     "primaryColor": "#5B43D6",
     "android": {
+      "softwareKeyboardLayoutMode": "pan",
       "adaptiveIcon": {
         "backgroundColor": "#FCFDFF",
         "foregroundImage": "./assets/images/brand/android-foreground.png",
