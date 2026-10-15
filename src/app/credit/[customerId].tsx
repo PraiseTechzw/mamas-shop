@@ -1,5 +1,2 @@
-import { RoutePlaceholder } from '@/components/layout/route-placeholder';
-
-export default function Screen() {
-  return <RoutePlaceholder title='Customer account' />;
-}
+import { CustomerAccountScreen } from '@/features/credit/credit-screens';
+export default function Screen() { return <CustomerAccountScreen />; }

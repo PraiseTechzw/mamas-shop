@@ -1,5 +1,2 @@
-import { RoutePlaceholder } from '@/components/layout/route-placeholder';
-
-export default function Screen() {
-  return <RoutePlaceholder title='Checkout' />;
-}
+import { CheckoutScreen } from '@/features/sales/sales-screens';
+export default function Screen() { return <CheckoutScreen />; }

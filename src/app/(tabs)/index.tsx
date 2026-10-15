@@ -1,5 +1,2 @@
-import { RoutePlaceholder } from '@/components/layout/route-placeholder';
-
-export default function Screen() {
-  return <RoutePlaceholder title='Dashboard' />;
-}
+import { DashboardScreen } from '@/features/dashboard/dashboard-screen';
+export default function Screen() { return <DashboardScreen />; }
