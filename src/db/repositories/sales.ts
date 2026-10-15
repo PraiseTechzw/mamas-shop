@@ -76,7 +76,7 @@ export async function recordSale(db: SQLiteDatabase, input: RecordSaleInput) {
   if (changeDueCents > 0 && !input.customerId) throw new Error('Choose a customer to record change they will collect later.');
   if (balanceCents > 0 && !input.customerId) throw new Error('Choose a credit customer before leaving a balance.');
   const status = balanceCents === 0 ? 'PAID' : input.amountPaidCents > 0 ? 'PARTIAL' : 'CREDIT';
-  const outboxPayload = { id: saleId, receipt_number: receiptNumber, customer_id: input.customerId, seller_id: input.sellerId, location_id: selectedLocation.id, total_cents: totalCents, paid_cents: input.amountPaidCents, balance_cents: balanceCents, amount_tendered_cents: amountTenderedCents, change_due_cents: changeDueCents, payment_method: input.method, status, created_at: now, items: lines };
+  const outboxPayload = { id: saleId, receipt_number: receiptNumber, customer_id: input.customerId, seller_id: input.sellerId, seller_name: selectedSeller.name, location_id: selectedLocation.id, location_name: selectedLocation.name, total_cents: totalCents, paid_cents: input.amountPaidCents, balance_cents: balanceCents, amount_tendered_cents: amountTenderedCents, change_due_cents: changeDueCents, payment_method: input.method, status, created_at: now, items: lines };
 
   await db.withTransactionAsync(async () => {
     await ensurePrimaryLocation(db, input.ownerId);

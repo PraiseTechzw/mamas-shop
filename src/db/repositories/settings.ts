@@ -1,4 +1,5 @@
 import type { SQLiteDatabase } from 'expo-sqlite';
+import * as Crypto from 'expo-crypto';
 import type { InventoryLocation } from '@/db/schema';
 import { enqueueChange } from './outbox';
 export type ShopSettings = { shop_name: string; currency: string; low_stock_alerts: number };
@@ -7,9 +8,10 @@ export async function saveShopSettings(db: SQLiteDatabase, ownerId: string, name
  const updatedAt = new Date().toISOString();
  await db.withTransactionAsync(async () => {
   await db.runAsync('INSERT INTO shop_settings (owner_id, shop_name, currency, low_stock_alerts, updated_at) VALUES (?, ?, ?, ?, ?) ON CONFLICT(owner_id) DO UPDATE SET shop_name = excluded.shop_name, currency = excluded.currency, low_stock_alerts = excluded.low_stock_alerts, updated_at = excluded.updated_at', ownerId, name.trim(), currency, alerts ? 1 : 0, updatedAt);
+  await db.runAsync("INSERT INTO audit_log (id, owner_id, action, entity_type, entity_id, description, created_at) VALUES (?, ?, 'UPDATE', 'settings', ?, ?, ?)", Crypto.randomUUID(), ownerId, ownerId, 'Updated shop settings', updatedAt);
   await enqueueChange(db, ownerId, 'shop_settings', ownerId, 'settings.update', { shop_name: name.trim(), currency, low_stock_alerts: alerts, updated_at: updatedAt }, updatedAt);
  });
 }
 export async function listAuditLog(db: SQLiteDatabase, ownerId: string) { return db.getAllAsync<{ id: string; action: string; entity_type: string; description: string; created_at: string }>('SELECT id, action, entity_type, description, created_at FROM audit_log WHERE owner_id = ? ORDER BY created_at DESC LIMIT 100', ownerId); }
-export async function getSyncSummary(db: SQLiteDatabase, ownerId: string) { return db.getFirstAsync<{ pending: number; failed: number }>('SELECT COUNT(*) AS pending, COALESCE(SUM(CASE WHEN last_error IS NOT NULL THEN 1 ELSE 0 END), 0) AS failed FROM sync_outbox WHERE owner_id = ?', ownerId); }
+export async function getSyncSummary(db: SQLiteDatabase, ownerId: string) { return db.getFirstAsync<{ pending: number; failed: number; conflicts: number }>(`SELECT (SELECT COUNT(*) FROM sync_outbox WHERE owner_id = ?) AS pending, (SELECT COUNT(*) FROM sync_outbox WHERE owner_id = ? AND last_error IS NOT NULL) AS failed, (SELECT COUNT(*) FROM sync_conflicts WHERE owner_id = ? AND resolved_at IS NULL) AS conflicts`, ownerId, ownerId, ownerId); }
 export async function listLocationBalances(db: SQLiteDatabase, ownerId: string) { return db.getAllAsync<InventoryLocation & { products: number; units: number }>(`SELECT l.id, l.name, l.is_primary, COUNT(b.product_id) AS products, COALESCE(SUM(b.quantity), 0) AS units FROM inventory_locations l LEFT JOIN inventory_balances b ON b.location_id = l.id AND b.owner_id = l.owner_id WHERE l.owner_id = ? GROUP BY l.id ORDER BY l.is_primary DESC, l.name`, ownerId); }

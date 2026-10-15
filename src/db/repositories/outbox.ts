@@ -8,5 +8,6 @@ export async function enqueueChange(db: SQLiteDatabase, ownerId: string, entityT
     'INSERT INTO sync_outbox (id, owner_id, entity_type, entity_id, operation, payload_json, idempotency_key, created_at, next_attempt_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
     id, ownerId, entityType, entityId, operation, JSON.stringify(payload), id, now, now,
   );
+  await db.runAsync('INSERT OR IGNORE INTO sync_applied_events (idempotency_key, owner_id, applied_at) VALUES (?, ?, ?)', id, ownerId, now);
   requestSync();
 }

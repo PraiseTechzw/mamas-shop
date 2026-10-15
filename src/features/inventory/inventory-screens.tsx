@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Alert, Image, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { useSQLiteContext } from 'expo-sqlite';
@@ -6,6 +6,7 @@ import { Apple, ArrowDownToLine, Beef, Boxes, ChevronRight, Cookie, Droplets, El
 import * as ImagePicker from 'expo-image-picker';
 import { File, Paths } from 'expo-file-system';
 import { useAuth } from '@/features/auth/auth-context';
+import { useSyncStatus } from '@/features/sync/sync-context';
 import { addProduct, adjustStock, getLocationBalance, getProduct, listInventory, listLocations, listMovements, listProductBalances, receiveStock, transferStock, updateProduct } from '@/db/repositories/inventory';
 import type { InventoryLocation, Product, StockMovement } from '@/db/schema';
 import { colors, radius } from '@/constants/theme';
@@ -77,8 +78,11 @@ function productDetails(product: Product) {
 
 export function InventoryScreen() {
  const db=useSQLiteContext(); const {session}=useAuth(); const owner=session?.user.id??''; const [items,setItems]=useState<Product[]>([]); const [search,setSearch]=useState(''); const [category,setCategory]=useState('All'); const [loading,setLoading]=useState(true);
+ const {revision}=useSyncStatus();
+ const lastRevision=useRef(revision);
  const load=useCallback(async()=>{setLoading(true);try{setItems(await listInventory(db,owner));}catch{Alert.alert('Inventory unavailable','Could not load your products. Please try again.');}finally{setLoading(false);}},[db,owner]);
  useFocusEffect(useCallback(()=>{void load();},[load]));
+ useEffect(()=>{if(lastRevision.current!==revision){lastRevision.current=revision;void load();}},[load,revision]);
  const categoryOrder=['Maheu','Soft Drinks','Water','Energy Drinks','Biscuits','Snacks','Fresh Produce','Meat & Deli','Airtime','Other'];
  const customCategories=Array.from(new Set(items.map(inventoryCategory))).filter((item)=>!categoryOrder.includes(item)).sort((a,b)=>a.localeCompare(b));
  const categories=['All',...categoryOrder,...customCategories];

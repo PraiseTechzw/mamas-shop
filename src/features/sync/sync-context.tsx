@@ -16,13 +16,15 @@ type SyncContextValue = {
   syncing: boolean;
   pending: number;
   failed: number;
+  conflicts: number;
+  revision: number;
   lastSyncedAt: string | null;
   unavailable: SyncResult['unavailable'];
   syncNow: (force?: boolean) => Promise<void>;
 };
 
 const SyncContext = createContext<SyncContextValue>({
-  connection: 'checking', syncing: false, pending: 0, failed: 0, lastSyncedAt: null, unavailable: undefined, syncNow: async () => {},
+  connection: 'checking', syncing: false, pending: 0, failed: 0, conflicts: 0, revision: 0, lastSyncedAt: null, unavailable: undefined, syncNow: async () => {},
 });
 const offlineArt = require('@/assets/images/shop-illustrations/sync/offline.png');
 const pendingArt = require('@/assets/images/shop-illustrations/sync/sync-pending.png');
@@ -37,18 +39,21 @@ export function SyncProvider({ children }: PropsWithChildren) {
   const [syncing, setSyncing] = useState(false);
   const [pending, setPending] = useState(0);
   const [failed, setFailed] = useState(0);
+  const [conflicts, setConflicts] = useState(0);
+  const [revision, setRevision] = useState(0);
   const [lastSyncedAt, setLastSyncedAt] = useState<string | null>(null);
   const [unavailable, setUnavailable] = useState<SyncResult['unavailable']>();
   const running = useRef(false);
 
   const refreshSummary = useCallback(async () => {
-    if (!ownerId) { setPending(0); setFailed(0); setLastSyncedAt(null); return; }
+    if (!ownerId) { setPending(0); setFailed(0); setConflicts(0); setLastSyncedAt(null); return; }
     const [summary, metadata] = await Promise.all([
       getSyncSummary(db, ownerId),
       db.getFirstAsync<{ last_synced_at: string | null }>('SELECT last_synced_at FROM sync_metadata WHERE owner_id = ?', ownerId),
     ]);
     setPending(summary?.pending ?? 0);
     setFailed(summary?.failed ?? 0);
+    setConflicts(summary?.conflicts ?? 0);
     setLastSyncedAt(metadata?.last_synced_at ?? null);
   }, [db, ownerId]);
 
@@ -59,6 +64,8 @@ export function SyncProvider({ children }: PropsWithChildren) {
     try {
       const result = await syncOutbox(db, ownerId, force);
       setUnavailable(result.unavailable);
+      setConflicts(result.conflicts);
+      if (result.downloaded > 0) setRevision((current) => current + result.downloaded);
       if (result.lastSyncedAt) setLastSyncedAt(result.lastSyncedAt);
       await refreshSummary();
     } finally {
@@ -82,7 +89,7 @@ export function SyncProvider({ children }: PropsWithChildren) {
     return () => { active = false; if (timer) clearTimeout(timer); };
   }, [connection, pending, failed, db, ownerId, syncNow, unavailable]);
 
-  const value = useMemo(() => ({ connection, syncing, pending, failed, lastSyncedAt, unavailable: configured ? unavailable : 'not-configured', syncNow }), [connection, syncing, pending, failed, lastSyncedAt, unavailable, configured, syncNow]);
+  const value = useMemo(() => ({ connection, syncing, pending, failed, conflicts, revision, lastSyncedAt, unavailable: configured ? unavailable : 'not-configured', syncNow }), [connection, syncing, pending, failed, conflicts, revision, lastSyncedAt, unavailable, configured, syncNow]);
   return <SyncContext.Provider value={value}><View style={{ flex: 1 }}><NetworkSyncBanner /><View style={{ flex: 1 }}>{children}</View></View></SyncContext.Provider>;
 }
 
@@ -91,16 +98,16 @@ export function useSyncStatus() { return useContext(SyncContext); }
 export function NetworkSyncBanner() {
   const insets = useSafeAreaInsets();
   const { session } = useAuth();
-  const { connection, syncing, pending, failed, unavailable, lastSyncedAt } = useSyncStatus();
+  const { connection, syncing, pending, failed, conflicts, unavailable, lastSyncedAt } = useSyncStatus();
   const offline = connection === 'offline';
   const needsSetup = unavailable === 'not-configured';
   const failedState = failed > 0 && !offline;
   // Keep the app header clear during normal operation. Show this banner only
   // when the connection or sync queue needs the user's attention.
-  const show = connection === 'checking' || offline || syncing || pending > 0 || failedState || needsSetup;
+  const show = connection === 'checking' || offline || syncing || pending > 0 || failedState || conflicts > 0 || needsSetup;
   if (!session || !show) return null;
   const image = offline ? offlineArt : failedState ? failedArt : syncing ? pendingArt : pending ? pendingArt : completeArt;
-  const message = offline ? 'Offline · changes stay on this device' : connection === 'checking' ? 'Checking network connection…' : needsSetup ? 'Online · cloud sync needs setup' : syncing ? 'Syncing saved changes…' : failedState ? `${failed} changes will retry automatically` : `${pending} saved ${pending === 1 ? 'change' : 'changes'} waiting to sync`;
+  const message = offline ? 'Offline · changes stay on this device' : connection === 'checking' ? 'Checking network connection…' : needsSetup ? 'Online · cloud sync needs setup' : syncing ? 'Syncing saved changes…' : conflicts > 0 ? `${conflicts} cloud change${conflicts === 1 ? '' : 's'} need review` : failedState ? `${failed} changes will retry automatically` : `${pending} saved ${pending === 1 ? 'change' : 'changes'} waiting to sync`;
   return <View accessibilityLiveRegion="polite" style={[styles.banner, { paddingTop: Math.max(5, insets.top) }, offline && styles.offline, failedState && styles.failed]}>
     <Image source={image} resizeMode="contain" style={styles.art} accessibilityLabel={offline ? 'Shop offline' : 'Shop sync status'} />
     <View style={styles.message}><AppText variant="small" color={colors.deepPurple}>{message}</AppText>{lastSyncedAt && !offline ? <AppText variant="small" color={colors.secondary}>Last synced {formatDateTime(lastSyncedAt)}</AppText> : null}</View>

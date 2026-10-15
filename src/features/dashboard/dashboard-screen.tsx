@@ -9,6 +9,7 @@ import { formatMoney } from '@/lib/format';
 import { getDashboardData, type DashboardData } from '@/db/repositories/dashboard';
 import { useAuth } from '@/features/auth/auth-context';
 import { AppText, Card, SectionTitle } from '@/components/ui/primitives';
+import { useSyncStatus } from '@/features/sync/sync-context';
 
 const emptyData: DashboardData = { salesTodayCents: 0, salesTodayCount: 0, paymentsTodayCents: 0, creditOutstandingCents: 0, lowStockCount: 0, salesBySeller: [], salesByLocation: [] };
 const sellerColors = ['#4D35D7', '#F5A623', '#23A47A', '#E94E64', '#4388E8'];
@@ -16,13 +17,14 @@ const sellerColors = ['#4D35D7', '#F5A623', '#23A47A', '#E94E64', '#4388E8'];
 export function DashboardScreen() {
   const db = useSQLiteContext();
   const { session } = useAuth();
+  const { revision } = useSyncStatus();
   const [data, setData] = useState(emptyData);
   const [refreshing, setRefreshing] = useState(false);
   const [breakdown, setBreakdown] = useState<'location' | 'seller'>('location');
   const firstName = String(session?.user.user_metadata?.full_name ?? session?.user.email?.split('@')[0] ?? 'Mama').split(' ')[0];
   const load = useCallback(async () => { setRefreshing(true); try { setData(await getDashboardData(db, session?.user.id ?? '')); } finally { setRefreshing(false); } }, [db, session?.user.id]);
   // eslint-disable-next-line react-hooks/set-state-in-effect -- refresh dashboard totals from local SQLite on screen entry.
-  useEffect(() => { void load(); }, [load]);
+  useEffect(() => { void load(); }, [load, revision]);
   return <ScrollView className="flex-1 bg-canvas" refreshControl={<RefreshControl refreshing={refreshing} onRefresh={load} tintColor={colors.purple} />} contentContainerStyle={styles.page}>
     <View style={styles.profileRow}>
       <View style={styles.profileAvatar}><AppText variant="label" color={colors.deepPurple}>{firstName.slice(0, 1).toUpperCase()}</AppText></View>

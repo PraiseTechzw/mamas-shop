@@ -46,6 +46,7 @@ import {
 } from "lucide-react-native";
 import { ensurePrimaryLocation, listLocations } from "@/db/repositories/inventory";
 import { ensureOwnerSeller, listSellers } from "@/db/repositories/sellers";
+import { useSyncStatus } from "@/features/sync/sync-context";
 import { useEffect, useMemo, useState } from "react";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import {
@@ -72,6 +73,7 @@ function saleCategory(product: Product) {
 export function SalesScreen() {
   const db = useSQLiteContext();
   const { session } = useAuth();
+  const { revision } = useSyncStatus();
   const ownerId = session?.user.id ?? "";
   const [rows, setRows] = useState<Product[]>([]);
   const [locations, setLocations] = useState<InventoryLocation[]>([]);
@@ -101,7 +103,7 @@ export function SalesScreen() {
       if (!sellerRows.some((seller) => seller.id === sellerId)) setSellerId(ownerSeller.id);
     });
     return () => { active = false; };
-  }, [db, ownerId, session?.user.email, session?.user.user_metadata?.full_name, locationId, sellerId, setLocationId, setSellerId]);
+  }, [db, ownerId, session?.user.email, session?.user.user_metadata?.full_name, locationId, sellerId, setLocationId, setSellerId, revision]);
   useEffect(() => {
     let active = true;
     void listProductsForSale(db, ownerId, search, locationId).then((data) => {
@@ -110,7 +112,7 @@ export function SalesScreen() {
     return () => {
       active = false;
     };
-  }, [db, ownerId, search, locationId]);
+  }, [db, ownerId, search, locationId, revision]);
   const categories = useMemo(
     () => ["All", ...Array.from(new Set(rows.map(saleCategory)))],
     [rows],
@@ -632,6 +634,7 @@ export function CheckoutScreen() {
 export function SalesHistoryScreen() {
   const db = useSQLiteContext();
   const { session } = useAuth();
+  const { revision } = useSyncStatus();
   const ownerId = session?.user.id ?? "";
   const [sales, setSales] = useState<SaleSummary[]>([]);
   const [refreshing, setRefreshing] = useState(false);
@@ -674,7 +677,7 @@ export function SalesHistoryScreen() {
     return () => {
       active = false;
     };
-  }, [db, ownerId]);
+  }, [db, ownerId, revision]);
   return (
     <Page
       title="Sales history"
@@ -730,6 +733,7 @@ export function SalesHistoryScreen() {
                   <View style={{ flex: 1, minWidth: 0 }}>
                     <AppText variant="label" numberOfLines={1}>{sale.customer_name || "Walk-in customer"}</AppText>
                     <AppText variant="small" color={colors.secondary} style={{ marginTop: 3 }} numberOfLines={1}>{formatDateTime(sale.created_at)}</AppText>
+                    <AppText variant="small" color={colors.secondary} numberOfLines={1}>{sale.location_name ?? 'No location'} · {sale.seller_name ?? 'Unassigned seller'}</AppText>
                   </View>
                   <View style={styles.historyAmount}>
                     <AppText variant="label">{formatMoney(sale.total_cents)}</AppText>
@@ -740,6 +744,7 @@ export function SalesHistoryScreen() {
                 {expanded ? (
                   <View style={styles.historyDetails}>
                     <AppText variant="small" color={colors.secondary}>Receipt · {sale.receipt_number}</AppText>
+                    <View style={styles.historyPaymentRow}><AppText variant="small" color={colors.secondary}>Location · seller</AppText><AppText variant="small" numberOfLines={1}>{sale.location_name ?? 'No location'} · {sale.seller_name ?? 'Unassigned'}</AppText></View>
                     <View style={styles.historyPaymentRow}><AppText variant="small" color={colors.secondary}>Paid</AppText><AppText variant="small">{formatMoney(sale.paid_cents)}</AppText></View>
                     {sale.balance_cents > 0 ? <View style={styles.historyPaymentRow}><AppText variant="small" color={colors.warning}>Still owed</AppText><AppText variant="label" color={colors.warning}>{formatMoney(sale.balance_cents)}</AppText></View> : null}
                     <View style={styles.historySync}><View style={[styles.syncDot, sale.sync_state === "SYNCED" && styles.syncDotComplete]} /><AppText variant="small" color={colors.secondary}>{sale.sync_state === "SYNCED" ? "Uploaded to the cloud" : "Saved on this device · will sync when available"}</AppText></View>

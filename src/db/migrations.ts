@@ -1,6 +1,6 @@
 import type { SQLiteDatabase } from 'expo-sqlite';
 
-const DATABASE_VERSION = 5;
+const DATABASE_VERSION = 7;
 
 export async function migrateDbIfNeeded(db: SQLiteDatabase) {
   const row = await db.getFirstAsync<{ user_version: number }>('PRAGMA user_version');
@@ -82,6 +82,34 @@ export async function migrateDbIfNeeded(db: SQLiteDatabase) {
       UPDATE sales SET location_id = (SELECT id FROM inventory_locations WHERE inventory_locations.owner_id = sales.owner_id ORDER BY is_primary DESC, created_at LIMIT 1) WHERE location_id IS NULL;
     `);
     version = 5;
+  }
+  if (version < 6) {
+    const syncMetadataColumns = await db.getAllAsync<{ name: string }>('PRAGMA table_info(sync_metadata)');
+    if (!syncMetadataColumns.some((column) => column.name === 'last_pulled_at')) await db.execAsync('ALTER TABLE sync_metadata ADD COLUMN last_pulled_at TEXT');
+    if (!syncMetadataColumns.some((column) => column.name === 'last_pulled_key')) await db.execAsync('ALTER TABLE sync_metadata ADD COLUMN last_pulled_key TEXT');
+    await db.execAsync(`
+      CREATE TABLE IF NOT EXISTS sync_applied_events (
+        idempotency_key TEXT PRIMARY KEY NOT NULL,
+        owner_id TEXT NOT NULL,
+        applied_at TEXT NOT NULL
+      );
+      CREATE TABLE IF NOT EXISTS sync_conflicts (
+        idempotency_key TEXT PRIMARY KEY NOT NULL,
+        owner_id TEXT NOT NULL,
+        description TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        resolved_at TEXT
+      );
+      CREATE INDEX IF NOT EXISTS sync_conflicts_owner_date_idx ON sync_conflicts(owner_id, created_at DESC);
+      INSERT OR IGNORE INTO sync_applied_events (idempotency_key, owner_id, applied_at)
+        SELECT idempotency_key, owner_id, created_at FROM sync_outbox;
+    `);
+    version = 6;
+  }
+  if (version < 7) {
+    const conflictColumns = await db.getAllAsync<{ name: string }>('PRAGMA table_info(sync_conflicts)');
+    if (!conflictColumns.some((column) => column.name === 'payload_json')) await db.execAsync("ALTER TABLE sync_conflicts ADD COLUMN payload_json TEXT NOT NULL DEFAULT '{}'");
+    version = 7;
   }
   await db.execAsync('PRAGMA user_version = ' + Math.min(version, DATABASE_VERSION));
 }

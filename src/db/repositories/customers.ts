@@ -37,6 +37,7 @@ export async function createCustomer(db: SQLiteDatabase, ownerId: string, name: 
   try {
     await db.withTransactionAsync(async () => {
       await db.runAsync('INSERT INTO customers (id, owner_id, name, phone, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)', id, ownerId, cleanName, phone.trim() || null, now, now);
+      await db.runAsync("INSERT INTO audit_log (id, owner_id, action, entity_type, entity_id, description, created_at) VALUES (?, ?, 'CREATE', 'customer', ?, ?, ?)", Crypto.randomUUID(), ownerId, id, 'Added customer ' + cleanName, now);
       await enqueueChange(db, ownerId, 'customer', id, 'customer.create', { id, name: cleanName, phone: phone.trim() || null, created_at: now }, now);
     });
   } catch (error) {

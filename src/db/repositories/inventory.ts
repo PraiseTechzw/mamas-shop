@@ -9,9 +9,10 @@ export async function ensurePrimaryLocation(db: SQLiteDatabase, ownerId: string)
   if (!location) {
     const id = Crypto.randomUUID(); const at = now();
     await db.runAsync('INSERT INTO inventory_locations (id, owner_id, name, is_primary, created_at) VALUES (?, ?, ?, 1, ?)', id, ownerId, 'Main shop', at);
+    await enqueueChange(db, ownerId, 'inventory_location', id, 'location.create', { id, name: 'Main shop', is_primary: true, created_at: at }, at);
     location = { id, name: 'Main shop', is_primary: 1 };
   }
-  await db.runAsync('INSERT OR IGNORE INTO inventory_balances (owner_id, product_id, location_id, quantity, updated_at) SELECT owner_id, id, ?, stock_quantity, updated_at FROM products WHERE owner_id = ?', location.id, ownerId);
+  await db.runAsync('INSERT OR IGNORE INTO inventory_balances (owner_id, product_id, location_id, quantity, updated_at) SELECT p.owner_id, p.id, ?, p.stock_quantity, p.updated_at FROM products p WHERE p.owner_id = ? AND NOT EXISTS (SELECT 1 FROM inventory_balances b WHERE b.owner_id = p.owner_id AND b.product_id = p.id)', location.id, ownerId);
   return location;
 }
 export async function listLocations(db: SQLiteDatabase, ownerId: string) { return db.getAllAsync<InventoryLocation>('SELECT id, name, is_primary FROM inventory_locations WHERE owner_id = ? ORDER BY is_primary DESC, name', ownerId); }
@@ -40,7 +41,7 @@ export async function addProduct(db: SQLiteDatabase, ownerId: string, input: { n
     await db.runAsync(`INSERT INTO audit_log (id, owner_id, action, entity_type, entity_id, description, created_at) VALUES (?, ?, 'CREATE', 'product', ?, ?, ?)`, Crypto.randomUUID(), ownerId, id, 'Added product ' + input.name.trim(), at);
     const syncInput = { ...input };
     delete syncInput.imageUri;
-    await enqueueChange(db, ownerId, 'product', id, 'product.create', { id, ...syncInput, name: input.name.trim(), created_at: at }, at);
+    await enqueueChange(db, ownerId, 'product', id, 'product.create', { id, ...syncInput, location_id: location.id, location_name: location.name, name: input.name.trim(), created_at: at }, at);
   });
   return id;
 }
@@ -114,6 +115,7 @@ export async function addLocation(db: SQLiteDatabase, ownerId: string, name: str
   try {
     await db.withTransactionAsync(async () => {
       await db.runAsync('INSERT INTO inventory_locations (id, owner_id, name, is_primary, created_at) VALUES (?, ?, ?, 0, ?)', id, ownerId, name.trim(), at);
+      await db.runAsync("INSERT INTO audit_log (id, owner_id, action, entity_type, entity_id, description, created_at) VALUES (?, ?, 'CREATE', 'location', ?, ?, ?)", Crypto.randomUUID(), ownerId, id, 'Added stock location ' + name.trim(), at);
       await enqueueChange(db, ownerId, 'inventory_location', id, 'location.create', { id, name: name.trim(), created_at: at }, at);
     });
   } catch (error) {

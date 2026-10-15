@@ -14,8 +14,10 @@ export async function ensureOwnerSeller(db: SQLiteDatabase, ownerId: string, nam
   const now = new Date().toISOString();
   try {
     await db.withTransactionAsync(async () => {
-      await db.runAsync('INSERT OR IGNORE INTO sellers (id, owner_id, name, is_owner, is_active, created_at, updated_at) VALUES (?, ?, ?, 1, 1, ?, ?)', id, ownerId, name.trim() || 'Shop owner', now, now);
-      await enqueueChange(db, ownerId, 'seller', id, 'seller.create', { id, name: name.trim() || 'Shop owner', is_owner: true, created_at: now }, now);
+      const inserted = await db.runAsync('INSERT OR IGNORE INTO sellers (id, owner_id, name, is_owner, is_active, created_at, updated_at) VALUES (?, ?, ?, 1, 1, ?, ?)', id, ownerId, name.trim() || 'Shop owner', now, now);
+      if (inserted.changes === 1) {
+        await enqueueChange(db, ownerId, 'seller', id, 'seller.create', { id, name: name.trim() || 'Shop owner', is_owner: true, created_at: now }, now);
+      }
     });
   } catch {
     // Another screen may have created the owner's seller record at the same time.

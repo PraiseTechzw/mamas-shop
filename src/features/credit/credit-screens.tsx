@@ -12,6 +12,7 @@ import { useCart } from '@/stores/cart';
 import { useAuth } from '@/features/auth/auth-context';
 import { AppText, Card, Field, Page, PrimaryButton, SecondaryButton, SectionTitle, StatusBadge } from '@/components/ui/primitives';
 import { IllustratedEmptyState } from '@/components/feedback/illustrated-empty-state';
+import { useSyncStatus } from '@/features/sync/sync-context';
 
 export function CreditCustomersScreen() { return <CustomerList />; }
 export function CreditSaleCustomerPicker() { return <CustomerList selectForCreditSale />; }
@@ -23,6 +24,7 @@ function CustomerList({ selectForCreditSale = false }: { selectForCreditSale?: b
   const db = useSQLiteContext();
   const { session } = useAuth();
   const ownerId = session?.user.id ?? '';
+  const { revision } = useSyncStatus();
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [adding, setAdding] = useState(false);
   const [name, setName] = useState('');
@@ -32,7 +34,7 @@ function CustomerList({ selectForCreditSale = false }: { selectForCreditSale?: b
   const [saving, setSaving] = useState(false);
   const load = async () => setCustomers(await listCustomers(db, ownerId));
   // eslint-disable-next-line react-hooks/set-state-in-effect, react-hooks/exhaustive-deps -- load local SQLite records when the account scope changes.
-  useEffect(() => { void load(); }, [db, ownerId]);
+  useEffect(() => { void load(); }, [db, ownerId, revision]);
   const save = async () => { setError(''); if (!name.trim()) { setError('Enter the customer’s name to continue.'); return; } setSaving(true); try { await createCustomer(db, ownerId, name, phone); setName(''); setPhone(''); setAdding(false); await load(); } catch (value) { setError(value instanceof Error ? value.message : 'Could not save this customer.'); } finally { setSaving(false); } };
   const filtered = customers.filter((customer) => (customer.name + ' ' + (customer.phone ?? '')).toLowerCase().includes(search.toLowerCase()));
   const choose = (customer: Customer) => {
@@ -62,13 +64,14 @@ export function CustomerAccountScreen() {
   const db = useSQLiteContext();
   const { session } = useAuth();
   const ownerId = session?.user.id ?? '';
+  const { revision } = useSyncStatus();
   const params = useLocalSearchParams<{ customerId: string }>();
   const customerId = Array.isArray(params.customerId) ? params.customerId[0] : params.customerId;
   const [customer, setCustomer] = useState<Customer | null>(null);
   const [entries, setEntries] = useState<AccountEntry[]>([]);
   const load = async () => { if (!customerId) return; const [person, history] = await Promise.all([getCustomer(db, ownerId, customerId), listAccountEntries(db, ownerId, customerId)]); setCustomer(person); setEntries(history); };
   // eslint-disable-next-line react-hooks/set-state-in-effect, react-hooks/exhaustive-deps -- load the selected customer ledger from local SQLite.
-  useEffect(() => { void load(); }, [db, ownerId, customerId]);
+  useEffect(() => { void load(); }, [db, ownerId, customerId, revision]);
   if (!customer) return <Page title="Customer account" back><Card><AppText color={colors.secondary}>Loading customer account…</AppText></Card></Page>;
   const charged = entries.filter((entry) => entry.entry_type === 'SALE_CHARGE').reduce((sum, entry) => sum + entry.amount_cents, 0);
   const paid = Math.abs(entries.filter((entry) => entry.entry_type === 'PAYMENT').reduce((sum, entry) => sum + entry.amount_cents, 0));
