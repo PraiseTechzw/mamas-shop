@@ -1,5 +1,5 @@
-import { useState, type ReactNode } from 'react';
-import { ActivityIndicator, Image, ImageBackground, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import { useRef, useState, type ReactNode } from 'react';
+import { ActivityIndicator, Image, ImageBackground, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Svg, { Defs, LinearGradient, Path, Rect, Stop } from 'react-native-svg';
 import { router } from 'expo-router';
@@ -92,9 +92,14 @@ export function WelcomeScreen() {
 export function LoginScreen() {
   const { configured } = useAuth();
   const [creating, setCreating] = useState(false);
-  const [fullName, setFullName] = useState('');
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
+  // Keep keystrokes in refs so typing does not rerender the whole auth screen
+  // while Android's native keyboard is editing the focused TextInput.
+  const fullName = useRef('');
+  const email = useRef('');
+  const password = useRef('');
+  const fullNameInput = useRef<TextInput>(null);
+  const emailInput = useRef<TextInput>(null);
+  const passwordInput = useRef<TextInput>(null);
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
@@ -103,20 +108,20 @@ export function LoginScreen() {
   const submit = async () => {
     setError('');
     setNotice('');
-    if (!email.trim() || !password) { setError('Enter your email and password to continue.'); return; }
-    if (password.length < 8) { setError('Use a password with at least 8 characters.'); return; }
-    if (creating && !fullName.trim()) { setError('Enter your name to create an account.'); return; }
+    if (!email.current.trim() || !password.current) { setError('Enter your email and password to continue.'); return; }
+    if (password.current.length < 8) { setError('Use a password with at least 8 characters.'); return; }
+    if (creating && !fullName.current.trim()) { setError('Enter your name to create an account.'); return; }
     if (!supabase) { setError('The app is not connected yet. Add the Supabase URL and publishable key to your local .env file.'); return; }
 
     setBusy(true);
     try {
       if (creating) {
-        const { data, error: authError } = await supabase.auth.signUp({ email: email.trim(), password, options: { data: { full_name: fullName.trim() } } });
+        const { data, error: authError } = await supabase.auth.signUp({ email: email.current.trim(), password: password.current, options: { data: { full_name: fullName.current.trim() } } });
         if (authError) throw authError;
         if (data.session) router.replace('/(tabs)');
         else setNotice('Check your email to confirm your account, then log in here.');
       } else {
-        const { error: authError } = await supabase.auth.signInWithPassword({ email: email.trim(), password });
+        const { error: authError } = await supabase.auth.signInWithPassword({ email: email.current.trim(), password: password.current });
         if (authError) throw authError;
         router.replace('/(tabs)');
       }
@@ -130,11 +135,11 @@ export function LoginScreen() {
   const forgotPassword = async () => {
     setError('');
     setNotice('');
-    if (!email.trim()) { setError('Enter your email address first.'); return; }
+    if (!email.current.trim()) { setError('Enter your email address first.'); return; }
     if (!supabase) { setError('Add the Supabase connection details to your local .env file first.'); return; }
     setBusy(true);
     try {
-      const { error: authError } = await supabase.auth.resetPasswordForEmail(email.trim());
+      const { error: authError } = await supabase.auth.resetPasswordForEmail(email.current.trim());
       if (authError) setError(authError.message);
       else setNotice('If an account exists for this email, a reset link is on its way.');
     } catch (value) {
@@ -146,7 +151,7 @@ export function LoginScreen() {
 
   return <SafeAreaView className="flex-1 bg-canvas" edges={['top', 'bottom']}>
     <KeyboardAvoidingView className="flex-1 bg-canvas" behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-      <ScrollView className="flex-1 bg-canvas" keyboardShouldPersistTaps="handled" contentContainerStyle={styles.loginPage}>
+      <ScrollView className="flex-1 bg-canvas" keyboardShouldPersistTaps="always" contentContainerStyle={styles.loginPage}>
         <Pressable accessibilityRole="button" accessibilityLabel="Back to welcome screen" onPress={() => router.replace('/(auth)/welcome')} hitSlop={10} style={styles.backButton}>
           <ArrowLeft size={18} stroke={colors.deepPurple} />
         </Pressable>
@@ -156,10 +161,10 @@ export function LoginScreen() {
           <AppText color={colors.secondary} style={styles.loginSubtitle}>{creating ? 'Set up your sign-in to manage your business.' : 'Sign in to continue managing your business.'}</AppText>
         </View>
         <View style={styles.form}>
-          {creating ? <Field label="Your name" placeholder="e.g. Mama Moyo" icon={<UserRound size={18} color={colors.secondary} />} focusAccent autoCapitalize="words" value={fullName} onChangeText={setFullName} returnKeyType="next" /> : null}
-          <Field label="Email address" placeholder="you@example.com" icon={<Mail size={18} color={colors.secondary} />} focusAccent keyboardType="email-address" autoCapitalize="none" autoCorrect={false} value={email} onChangeText={setEmail} returnKeyType="next" />
+          {creating ? <Field key="full-name" label="Your name" placeholder="e.g. Mama Moyo" icon={<UserRound size={18} color={colors.secondary} />} focusAccent inputRef={fullNameInput} autoCapitalize="words" defaultValue="" onChangeText={(value) => { fullName.current = value; }} onSubmitEditing={() => emailInput.current?.focus()} returnKeyType="next" submitBehavior="submit" /> : null}
+          <Field key="email" label="Email address" placeholder="you@example.com" icon={<Mail size={18} color={colors.secondary} />} focusAccent inputRef={emailInput} keyboardType="email-address" autoCapitalize="none" autoCorrect={false} defaultValue="" onChangeText={(value) => { email.current = value; }} onSubmitEditing={() => passwordInput.current?.focus()} returnKeyType="next" submitBehavior="submit" />
           <View>
-            <Field label="Password" placeholder="Enter your password" icon={<LockKeyhole size={18} color={colors.secondary} />} focusAccent inputStyle={styles.passwordInput} secureTextEntry={!showPassword} value={password} onChangeText={setPassword} onSubmitEditing={submit} returnKeyType="go" />
+            <Field key="password" label="Password" placeholder="Enter your password" icon={<LockKeyhole size={18} color={colors.secondary} />} focusAccent inputRef={passwordInput} inputStyle={styles.passwordInput} secureTextEntry={!showPassword} defaultValue="" onChangeText={(value) => { password.current = value; }} onSubmitEditing={submit} returnKeyType="go" />
             <Pressable accessibilityRole="button" accessibilityLabel={showPassword ? 'Hide password' : 'Show password'} hitSlop={10} onPress={() => setShowPassword((value) => !value)} style={styles.passwordEye}>
               {showPassword ? <EyeOff size={19} stroke={colors.secondary} /> : <Eye size={19} stroke={colors.secondary} />}
             </Pressable>

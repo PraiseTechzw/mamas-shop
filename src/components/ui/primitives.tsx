@@ -1,5 +1,5 @@
-import { useState, type PropsWithChildren, type ReactNode } from 'react';
-import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, TextInput, View, type TextInputProps, type TextStyle, type ViewStyle } from 'react-native';
+import { useState, type PropsWithChildren, type ReactNode, type Ref } from 'react';
+import { ActivityIndicator, Animated, Pressable, ScrollView, StyleSheet, Text, TextInput, View, type TextInputProps, type TextStyle, type ViewStyle } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { ChevronLeft } from 'lucide-react-native';
 import { router } from 'expo-router';
@@ -29,21 +29,36 @@ export function SecondaryButton({ label, onPress, style, icon }: { label: string
   return <Pressable accessibilityRole="button" onPress={onPress} style={({ pressed }) => [styles.secondaryButton, style, pressed && { backgroundColor: colors.lavenderTint }]}>{icon}<AppText variant="label" color={colors.deepPurple}>{label}</AppText></Pressable>;
 }
 
-export function Field({ label, error, containerStyle, inputStyle, icon, focusAccent = false, onFocus, onBlur, ...props }: TextInputProps & { label: string; error?: string; containerStyle?: ViewStyle; inputStyle?: TextStyle; icon?: ReactNode; focusAccent?: boolean }) {
-  const [focused, setFocused] = useState(false);
+export function Field({ label, error, containerStyle, inputStyle, icon, focusAccent = false, inputRef, onFocus, onBlur, ...props }: TextInputProps & { label: string; error?: string; containerStyle?: ViewStyle; inputStyle?: TextStyle; icon?: ReactNode; focusAccent?: boolean; inputRef?: Ref<TextInput> }) {
+  const [focusProgress] = useState(() => new Animated.Value(0));
+  const focusStyle = focusAccent ? {
+    borderColor: focusProgress.interpolate({ inputRange: [0, 1], outputRange: [colors.border, '#E6AF00'] }),
+    backgroundColor: focusProgress.interpolate({ inputRange: [0, 1], outputRange: [colors.surface, '#FFFCF1'] }),
+    shadowColor: '#F2B500',
+    shadowOpacity: focusProgress.interpolate({ inputRange: [0, 1], outputRange: [0, 0.28] }),
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 0 },
+  } : null;
   return <View style={[styles.field, containerStyle]}>
     {label ? <AppText variant="label" style={{ marginBottom: 7 }}>{label}</AppText> : null}
-    <View style={[styles.inputFrame, focused && focusAccent && styles.inputFrameFocused]}>
+    <Animated.View style={[styles.inputFrame, focusStyle]}>
       {icon ? <View pointerEvents="none" style={styles.inputIcon}>{icon}</View> : null}
       <TextInput
+        ref={inputRef}
         placeholderTextColor="#9A9AAC"
         underlineColorAndroid="transparent"
         {...props}
-        onFocus={(event) => { setFocused(true); onFocus?.(event); }}
-        onBlur={(event) => { setFocused(false); onBlur?.(event); }}
-        style={[styles.input, icon && styles.inputWithIcon, inputStyle, props.multiline && { minHeight: 90, textAlignVertical: 'top' }]}
+        onFocus={(event) => {
+          if (focusAccent) Animated.timing(focusProgress, { toValue: 1, duration: 140, useNativeDriver: false }).start();
+          onFocus?.(event);
+        }}
+        onBlur={(event) => {
+          if (focusAccent) Animated.timing(focusProgress, { toValue: 0, duration: 140, useNativeDriver: false }).start();
+          onBlur?.(event);
+        }}
+        style={[styles.input, icon ? styles.inputWithIcon : null, inputStyle, props.multiline && { minHeight: 90, textAlignVertical: 'top' }]}
       />
-    </View>
+    </Animated.View>
     {error ? <AppText variant="small" color={colors.danger} style={{ marginTop: 5 }}>{error}</AppText> : null}
   </View>;
 }
@@ -73,7 +88,6 @@ const styles = StyleSheet.create({
   disabled: { opacity: 0.55 },
   field: { gap: 0 },
   inputFrame: { minHeight: 54, flexDirection: 'row', alignItems: 'center', borderWidth: 1, borderColor: colors.border, borderRadius: 16, backgroundColor: colors.surface },
-  inputFrameFocused: { borderColor: '#E6AF00', borderWidth: 1.5, backgroundColor: '#FFFCF1', shadowColor: '#F2B500', shadowOpacity: 0.28, shadowRadius: 8, shadowOffset: { width: 0, height: 0 }, elevation: 3 },
   inputIcon: { width: 42, alignItems: 'center', justifyContent: 'center' },
   input: { flex: 1, minHeight: 52, borderRadius: 16, backgroundColor: 'transparent', paddingHorizontal: 14, paddingVertical: 12, color: colors.text, fontFamily: 'Inter-Regular', fontSize: 15 },
   inputWithIcon: { paddingLeft: 0 },
