@@ -17,25 +17,27 @@ export async function ensurePrimaryLocation(db: SQLiteDatabase, ownerId: string)
 export async function listLocations(db: SQLiteDatabase, ownerId: string) { return db.getAllAsync<InventoryLocation>('SELECT id, name, is_primary FROM inventory_locations WHERE owner_id = ? ORDER BY is_primary DESC, name', ownerId); }
 export async function listInventory(db: SQLiteDatabase, ownerId: string, search = '') {
   const pattern = '%' + search.trim() + '%';
-  return db.getAllAsync<Product>(`SELECT id, name, sku, category, unit, price_cents, cost_cents, stock_quantity, reorder_level FROM products WHERE owner_id = ? AND is_active = 1 AND (name LIKE ? OR COALESCE(sku, '') LIKE ? OR category LIKE ?) ORDER BY CASE WHEN stock_quantity <= reorder_level THEN 0 ELSE 1 END, name COLLATE NOCASE`, ownerId, pattern, pattern, pattern);
+  return db.getAllAsync<Product>(`SELECT id, name, sku, category, unit, price_cents, cost_cents, image_uri, stock_quantity, reorder_level FROM products WHERE owner_id = ? AND is_active = 1 AND (name LIKE ? OR COALESCE(sku, '') LIKE ? OR category LIKE ?) ORDER BY CASE WHEN stock_quantity <= reorder_level THEN 0 ELSE 1 END, name COLLATE NOCASE`, ownerId, pattern, pattern, pattern);
 }
-export async function getProduct(db: SQLiteDatabase, ownerId: string, id: string) { return db.getFirstAsync<Product>('SELECT id, name, sku, category, unit, price_cents, cost_cents, stock_quantity, reorder_level FROM products WHERE owner_id = ? AND id = ? AND is_active = 1', ownerId, id); }
-export async function addProduct(db: SQLiteDatabase, ownerId: string, input: { name: string; sku: string; category: string; unit: string; priceCents: number; costCents: number; opening: number; reorder: number }) {
+export async function getProduct(db: SQLiteDatabase, ownerId: string, id: string) { return db.getFirstAsync<Product>('SELECT id, name, sku, category, unit, price_cents, cost_cents, image_uri, stock_quantity, reorder_level FROM products WHERE owner_id = ? AND id = ? AND is_active = 1', ownerId, id); }
+export async function addProduct(db: SQLiteDatabase, ownerId: string, input: { name: string; sku: string; category: string; unit: string; priceCents: number; costCents: number; imageUri?: string | null; opening: number; reorder: number }) {
   if (!input.name.trim() || input.priceCents < 0 || input.costCents < 0 || input.opening < 0 || input.reorder < 0) throw new Error('Check the product details and quantities.');
   const id = Crypto.randomUUID(); const at = now();
   await db.withTransactionAsync(async () => {
     const exists = input.sku.trim() ? await db.getFirstAsync<{ id: string }>('SELECT id FROM products WHERE owner_id = ? AND sku = ? AND is_active = 1', ownerId, input.sku.trim()) : null;
     if (exists) throw new Error('That product code is already in use.');
-    await db.runAsync('INSERT INTO products (id, owner_id, name, sku, category, unit, price_cents, cost_cents, stock_quantity, reorder_level, is_active, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?)', id, ownerId, input.name.trim(), input.sku.trim() || null, input.category.trim() || 'Other', input.unit.trim() || 'each', input.priceCents, input.costCents, input.opening, input.reorder, at, at);
+    await db.runAsync('INSERT INTO products (id, owner_id, name, sku, category, unit, price_cents, cost_cents, image_uri, stock_quantity, reorder_level, is_active, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?)', id, ownerId, input.name.trim(), input.sku.trim() || null, input.category.trim() || 'Other', input.unit.trim() || 'each', input.priceCents, input.costCents, input.imageUri ?? null, input.opening, input.reorder, at, at);
     const location = await ensurePrimaryLocation(db, ownerId);
     await db.runAsync('INSERT INTO inventory_balances (owner_id, product_id, location_id, quantity, updated_at) VALUES (?, ?, ?, ?, ?)', ownerId, id, location.id, input.opening, at);
     if (input.opening > 0) await db.runAsync(`INSERT INTO stock_movements (id, owner_id, product_id, movement_type, quantity, to_location_id, unit_cost_cents, note, created_at) VALUES (?, ?, ?, 'OPENING', ?, ?, ?, ?, ?)`, Crypto.randomUUID(), ownerId, id, input.opening, location.id, input.costCents, 'Opening stock', at);
     await db.runAsync(`INSERT INTO audit_log (id, owner_id, action, entity_type, entity_id, description, created_at) VALUES (?, ?, 'CREATE', 'product', ?, ?, ?)`, Crypto.randomUUID(), ownerId, id, 'Added product ' + input.name.trim(), at);
-    await enqueueChange(db, ownerId, 'product', id, 'product.create', { id, ...input, name: input.name.trim(), created_at: at }, at);
+    const syncInput = { ...input };
+    delete syncInput.imageUri;
+    await enqueueChange(db, ownerId, 'product', id, 'product.create', { id, ...syncInput, name: input.name.trim(), created_at: at }, at);
   });
   return id;
 }
-export async function updateProduct(db: SQLiteDatabase, ownerId: string, id: string, input: { name: string; sku: string; category: string; unit: string; priceCents: number; costCents: number; reorder: number }) {
+export async function updateProduct(db: SQLiteDatabase, ownerId: string, id: string, input: { name: string; sku: string; category: string; unit: string; priceCents: number; costCents: number; imageUri?: string | null; reorder: number }) {
   if (!input.name.trim() || input.priceCents < 0 || input.costCents < 0 || input.reorder < 0) throw new Error('Check the product details.');
   const at = now();
   await db.withTransactionAsync(async () => {
@@ -46,9 +48,11 @@ export async function updateProduct(db: SQLiteDatabase, ownerId: string, id: str
       const duplicate = await db.getFirstAsync<{ id: string }>('SELECT id FROM products WHERE owner_id = ? AND sku = ? AND id != ? AND is_active = 1', ownerId, sku, id);
       if (duplicate) throw new Error('That product code is already in use.');
     }
-    await db.runAsync('UPDATE products SET name = ?, sku = ?, category = ?, unit = ?, price_cents = ?, cost_cents = ?, reorder_level = ?, updated_at = ? WHERE id = ? AND owner_id = ? AND is_active = 1', input.name.trim(), sku, input.category.trim() || 'Other', input.unit.trim() || 'each', input.priceCents, input.costCents, input.reorder, at, id, ownerId);
+    await db.runAsync('UPDATE products SET name = ?, sku = ?, category = ?, unit = ?, price_cents = ?, cost_cents = ?, image_uri = ?, reorder_level = ?, updated_at = ? WHERE id = ? AND owner_id = ? AND is_active = 1', input.name.trim(), sku, input.category.trim() || 'Other', input.unit.trim() || 'each', input.priceCents, input.costCents, input.imageUri ?? null, input.reorder, at, id, ownerId);
     await db.runAsync(`INSERT INTO audit_log (id, owner_id, action, entity_type, entity_id, description, created_at) VALUES (?, ?, 'UPDATE', 'product', ?, ?, ?)`, Crypto.randomUUID(), ownerId, id, 'Updated product ' + input.name.trim(), at);
-    await enqueueChange(db, ownerId, 'product', id, 'product.update', { id, ...input, sku, name: input.name.trim(), category: input.category.trim() || 'Other', unit: input.unit.trim() || 'each', updated_at: at }, at);
+    const syncInput = { ...input };
+    delete syncInput.imageUri;
+    await enqueueChange(db, ownerId, 'product', id, 'product.update', { id, ...syncInput, sku, name: input.name.trim(), category: input.category.trim() || 'Other', unit: input.unit.trim() || 'each', updated_at: at }, at);
   });
 }
 export async function receiveStock(db: SQLiteDatabase, ownerId: string, productId: string, quantity: number, unitCostCents: number, note: string, locationId?: string) {

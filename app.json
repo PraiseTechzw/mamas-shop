@@ -36,6 +36,14 @@
       "expo-sqlite",
       "expo-secure-store",
       "expo-image",
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Allow Mama’s Shop to select product photos from your library.",
+          "cameraPermission": "Allow Mama’s Shop to take product photos.",
+          "microphonePermission": false
+        }
+      ],
       "expo-localization",
       "expo-sharing"
     ],
