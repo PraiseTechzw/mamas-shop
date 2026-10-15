@@ -36,7 +36,7 @@ export type RecordSaleInput = {
 export async function recordSale(db: SQLiteDatabase, input: RecordSaleInput) {
   if (!input.items.length) throw new Error('Add at least one product to the sale.');
   const saleId = Crypto.randomUUID();
-  const receiptNumber = 'MS-' + new Date().toISOString().replace(/[-:TZ.]/g, '').slice(2, 12) + '-' + saleId.slice(0, 4).toUpperCase();
+  const receiptNumber = 'MS-' + new Date().toISOString().replaceAll('-', '').replaceAll(':', '').replaceAll('T', '').replaceAll('Z', '').replaceAll('.', '').slice(2, 12) + '-' + saleId.slice(0, 4).toUpperCase();
   const now = new Date().toISOString();
   const lines: { id: string; productId: string; name: string; quantity: number; unitPrice: number; lineTotal: number; unitCost: number }[] = [];
   let totalCents = 0;

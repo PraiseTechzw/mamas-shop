@@ -21,7 +21,7 @@ export function formatDate(value: string) {
 }
 
 export function toCents(value: string | number) {
-  const amount = typeof value === 'number' ? value : Number(value.replace(/[$,\s]/g, ''));
+  const amount = typeof value === 'number' ? value : Number(value.replaceAll('$', '').replaceAll(',', '').replaceAll(' ', '').replaceAll('\t', '').replaceAll('\n', ''));
   if (!Number.isFinite(amount) || amount < 0) return 0;
   return Math.round(amount * 100);
 }
