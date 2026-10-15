@@ -177,7 +177,7 @@ export function LoginScreen() {
     if (!supabase) { setError('Add the Supabase connection details to your local .env file first.'); return; }
     setBusy(true);
     try {
-      const { error: authError } = await supabase.auth.resetPasswordForEmail(email.current.trim());
+      const { error: authError } = await supabase.auth.resetPasswordForEmail(email.current.trim(), { redirectTo: 'mamasshop://reset-password' });
       if (authError) setError(authError.message);
       else setNotice('If an account exists for this email, a reset link is on its way.');
     } catch (value) {

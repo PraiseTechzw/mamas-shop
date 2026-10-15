@@ -76,6 +76,8 @@ export function SalesScreen() {
   const { revision } = useSyncStatus();
   const ownerId = session?.user.id ?? "";
   const [rows, setRows] = useState<Product[]>([]);
+  const [productLoadError, setProductLoadError] = useState('');
+  const [productRetry, setProductRetry] = useState(0);
   const [locations, setLocations] = useState<InventoryLocation[]>([]);
   const [sellers, setSellers] = useState<Seller[]>([]);
   const [search, setSearch] = useState("");
@@ -106,13 +108,16 @@ export function SalesScreen() {
   }, [db, ownerId, session?.user.email, session?.user.user_metadata?.full_name, locationId, sellerId, setLocationId, setSellerId, revision]);
   useEffect(() => {
     let active = true;
+    setProductLoadError('');
     void listProductsForSale(db, ownerId, search, locationId).then((data) => {
       if (active) setRows(data);
+    }).catch((value: unknown) => {
+      if (active) setProductLoadError(value instanceof Error ? value.message : 'Products could not be loaded. Check your connection and retry.');
     });
     return () => {
       active = false;
     };
-  }, [db, ownerId, search, locationId, revision]);
+  }, [db, ownerId, search, locationId, revision, productRetry]);
   const categories = useMemo(
     () => ["All", ...Array.from(new Set(rows.map(saleCategory)))],
     [rows],
@@ -143,6 +148,7 @@ export function SalesScreen() {
         keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}
       >
+      {productLoadError ? <View style={styles.errorBox}><AppText variant="small" color={colors.danger}>{productLoadError}</AppText><Pressable accessibilityRole="button" onPress={()=>setProductRetry((value)=>value+1)}><AppText variant="label" color={colors.deepPurple}>Retry loading products</AppText></Pressable></View> : null}
       <View style={styles.saleAssignment}>
         <View style={styles.assignmentRow}><View style={styles.assignmentLabel}><MapPin size={15} stroke={colors.deepPurple}/><AppText variant="small" color={colors.secondary}>Location</AppText></View><ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.assignmentChoices}>{locations.map((location)=><Pressable key={location.id} accessibilityRole="button" accessibilityState={{selected:locationId===location.id}} onPress={()=>setLocationId(location.id)} style={[styles.assignmentChip,locationId===location.id&&styles.assignmentChipActive]}><AppText variant="small" color={locationId===location.id?colors.deepPurple:colors.secondary}>{location.name}</AppText></Pressable>)}</ScrollView></View>
         <View style={styles.assignmentRow}><View style={styles.assignmentLabel}><Users size={15} stroke={colors.deepPurple}/><AppText variant="small" color={colors.secondary}>Seller</AppText></View><ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.assignmentChoices}>{sellers.map((seller)=><Pressable key={seller.id} accessibilityRole="button" accessibilityState={{selected:sellerId===seller.id}} onPress={()=>setSellerId(seller.id)} style={[styles.assignmentChip,sellerId===seller.id&&styles.assignmentChipActive]}><AppText variant="small" color={sellerId===seller.id?colors.deepPurple:colors.secondary}>{seller.name}</AppText></Pressable>)}</ScrollView></View>
@@ -345,10 +351,14 @@ export function CheckoutScreen() {
   const [paidAmount, setPaidAmount] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const [lookupError, setLookupError] = useState('');
   useEffect(() => {
     let active = true;
+    setLookupError('');
     void (customerId ? getCustomer(db, ownerId, customerId) : Promise.resolve(null)).then((value) => {
-      if (active) setCustomer(value);
+      if (active) { setCustomer(value); if (customerId && !value) setLookupError('This customer could not be found on this device. Choose the customer again.'); }
+    }).catch((value: unknown) => {
+      if (active) setLookupError(value instanceof Error ? value.message : 'Customer details could not be loaded.');
     });
     return () => {
       active = false;
@@ -360,6 +370,8 @@ export function CheckoutScreen() {
       if (!active) return;
       setSellerName(sellers.find((seller) => seller.id === sellerId)?.name ?? 'Choose seller');
       setLocationName(locations.find((location) => location.id === locationId)?.name ?? 'Choose location');
+    }).catch((value: unknown) => {
+      if (active) setLookupError(value instanceof Error ? value.message : 'Seller and location details could not be loaded.');
     });
     return () => { active = false; };
   }, [db, ownerId, sellerId, locationId]);
@@ -598,6 +610,7 @@ export function CheckoutScreen() {
           </Pressable>
         ) : null}
       </Card>
+      {lookupError ? <View style={styles.errorBox}><AppText variant="small" color={colors.danger}>{lookupError}</AppText></View> : null}
       {error ? (
         <View style={styles.errorBox}>
           <AppText variant="small" color={colors.danger}>

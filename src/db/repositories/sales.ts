@@ -53,7 +53,7 @@ export async function recordSale(db: SQLiteDatabase, input: RecordSaleInput) {
     : defaultLocation;
   if (!selectedLocation) throw new Error('Choose an active location before completing the sale.');
   if (!input.sellerId) throw new Error('Choose the seller responsible for this sale.');
-  const selectedSeller = await db.getFirstAsync<Seller>('SELECT id FROM sellers WHERE id = ? AND owner_id = ? AND is_active = 1', input.sellerId, input.ownerId);
+  const selectedSeller = await db.getFirstAsync<Seller>('SELECT id, name FROM sellers WHERE id = ? AND owner_id = ? AND is_active = 1', input.sellerId, input.ownerId);
   if (!selectedSeller) throw new Error('Choose an active seller for this shop.');
   const lines: { id: string; productId: string; name: string; quantity: number; unitPrice: number; lineTotal: number; unitCost: number }[] = [];
   let totalCents = 0;
