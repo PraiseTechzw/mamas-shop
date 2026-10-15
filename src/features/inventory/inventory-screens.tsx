@@ -2,13 +2,14 @@ import { useCallback, useEffect, useState } from 'react';
 import { Alert, Pressable, StyleSheet, View } from 'react-native';
 import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { useSQLiteContext } from 'expo-sqlite';
-import { ArrowDownToLine, ArrowLeftRight, Boxes, Clock3, PackagePlus, Pencil, Plus, SlidersHorizontal } from 'lucide-react-native';
+import { ArrowDownToLine, ArrowLeftRight, Boxes, Clock3, Pencil, Plus, SlidersHorizontal } from 'lucide-react-native';
 import { useAuth } from '@/features/auth/auth-context';
 import { addProduct, adjustStock, getProduct, listInventory, listLocations, listMovements, receiveStock, transferStock, updateProduct } from '@/db/repositories/inventory';
 import type { InventoryLocation, Product, StockMovement } from '@/db/schema';
 import { colors } from '@/constants/theme';
 import { formatDateTime, formatMoney, toCents } from '@/lib/format';
 import { AppText, Card, Field, Page, PrimaryButton, SecondaryButton, SectionTitle, StatusBadge } from '@/components/ui/primitives';
+import { IllustratedEmptyState } from '@/components/feedback/illustrated-empty-state';
 
 export function InventoryScreen() {
  const db=useSQLiteContext(); const {session}=useAuth(); const owner=session?.user.id??''; const [items,setItems]=useState<Product[]>([]); const [search,setSearch]=useState('');
@@ -22,7 +23,7 @@ export function InventoryScreen() {
   <View style={styles.actions}><SecondaryButton label="Adjust count" icon={<SlidersHorizontal stroke={colors.purple} size={17}/>} onPress={()=>router.push('/inventory/adjust-stock')} style={{flex:1}}/><SecondaryButton label="Stock history" icon={<Clock3 stroke={colors.purple} size={17}/>} onPress={()=>router.push('/inventory/history')} style={{flex:1}}/></View>
   <SectionTitle>{'Your products · '+items.length}</SectionTitle>
   {items.map((item)=><Pressable key={item.id} onPress={()=>router.push({pathname:'/inventory/[id]',params:{id:item.id}})}><Card style={styles.product}><View style={styles.productIcon}><Boxes stroke={colors.deepPurple} size={20}/></View><View style={{flex:1,gap:4}}><AppText variant="label">{item.name}</AppText><AppText variant="small" color={colors.secondary}>{item.sku||item.category+' · '+item.unit}</AppText><AppText variant="small" color={colors.secondary}>{formatMoney(item.price_cents)} selling · {formatMoney(item.cost_cents??0)} cost</AppText></View><View style={{alignItems:'flex-end',gap:6}}><AppText variant="amount" style={{fontSize:18}}>{item.stock_quantity} <AppText variant="small" color={colors.secondary}>{item.unit}</AppText></AppText><StatusBadge label={item.stock_quantity<=item.reorder_level?'Restock':'In stock'} tone={item.stock_quantity<=item.reorder_level?'amber':'green'}/></View></Card></Pressable>)}
-  {!items.length?<Card style={styles.empty}><PackagePlus stroke={colors.lavender} size={32}/><AppText variant="heading">No products yet</AppText><AppText color={colors.secondary} style={{textAlign:'center'}}>Add your first product, set its price, and enter the stock already on your shelves.</AppText><PrimaryButton label="Add a product" onPress={()=>router.push('/inventory/add')}/></Card>:null}
+  {!items.length?<IllustratedEmptyState image={require('@/assets/images/shop-illustrations/inventory/stock-unavailable.png')} title={search?'No products match your search':'No products yet'} description={search?'Try a different product name, code, or category.':'Add your first product, set its price, and enter the stock already on your shelves.'} action={<PrimaryButton label={search?'Clear search':'Add a product'} onPress={()=>search?setSearch(''):router.push('/inventory/add')}/>} />:null}
  </Page>;
 }
 

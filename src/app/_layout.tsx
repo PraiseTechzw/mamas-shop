@@ -8,6 +8,7 @@ import { AuthProvider } from '@/features/auth/auth-context';
 import { migrateDbIfNeeded } from '@/db/migrations';
 import { databaseName } from '@/db/client';
 import { colors } from '@/constants/theme';
+import { SyncProvider } from '@/features/sync/sync-context';
 
 export default function RootLayout() {
   const [loaded] = useFonts({
@@ -20,5 +21,5 @@ export default function RootLayout() {
     'Inter-Bold': require('../../assets/fonts/Inter/static/Inter_28pt-Bold.ttf'),
   });
   if (!loaded) return <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.background }}><ActivityIndicator color={colors.purple} /></View>;
-  return <Suspense fallback={<View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.background }}><ActivityIndicator color={colors.purple} /></View>}><SQLiteProvider databaseName={databaseName} onInit={migrateDbIfNeeded} useSuspense><AuthProvider><Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: colors.background } }} /></AuthProvider></SQLiteProvider></Suspense>;
+  return <Suspense fallback={<View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.background }}><ActivityIndicator color={colors.purple} /></View>}><SQLiteProvider databaseName={databaseName} onInit={migrateDbIfNeeded} useSuspense><AuthProvider><SyncProvider><Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: colors.background } }} /></SyncProvider></AuthProvider></SQLiteProvider></Suspense>;
 }

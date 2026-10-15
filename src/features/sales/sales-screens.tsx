@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Alert, Image, Pressable, RefreshControl, ScrollView, StyleSheet, View } from 'react-native';
+import { Alert, Pressable, RefreshControl, ScrollView, StyleSheet, View } from 'react-native';
 import { router } from 'expo-router';
 import { useSQLiteContext } from 'expo-sqlite';
 import { useAuth } from '@/features/auth/auth-context';
@@ -11,8 +11,7 @@ import type { Customer, PaymentMethod, Product, SaleSummary } from '@/db/schema'
 import { useCart } from '@/stores/cart';
 import { AppText, Card, Field, Page, PrimaryButton, SectionTitle, StatusBadge } from '@/components/ui/primitives';
 import { Banknote, Check, CreditCard, Minus, Plus, ReceiptText, Search, Smartphone } from 'lucide-react-native';
-
-const emptyArt = require('@/assets/images/empty-states/no-items.png');
+import { IllustratedEmptyState } from '@/components/feedback/illustrated-empty-state';
 
 export function SalesScreen() {
   const db = useSQLiteContext();
@@ -28,7 +27,7 @@ export function SalesScreen() {
   return <Page title={creditMode ? 'New credit sale' : 'Quick sale'} subtitle={creditMode ? 'Choose products for this customer account.' : 'Tap a product to add it to the sale.'} right={<Pressable onPress={() => router.push('/sales/history')} hitSlop={8}><ReceiptText size={21} stroke={colors.purple} /></Pressable>}>
     <View style={styles.searchBox}><Search size={18} stroke={colors.secondary} /><Field label="" accessibilityLabel="Search products" placeholder="Search products or categories" value={search} onChangeText={setSearch} containerStyle={{ flex: 1 }} /></View>
     <View style={styles.categoryRow}><StatusBadge label="In stock" /><AppText variant="small" color={colors.secondary}>Only items ready to sell are shown</AppText></View>
-    {!rows.length ? <Card style={styles.empty}><Image source={emptyArt} resizeMode="contain" style={{ height: 150, width: 150 }} /><AppText variant="heading">{search ? 'No matching products' : 'No products ready to sell'}</AppText><AppText color={colors.secondary} style={{ textAlign: 'center', lineHeight: 21 }}>{search ? 'Try another name or category.' : 'Add products and receive stock before recording your first sale.'}</AppText><PrimaryButton label={search ? 'Clear search' : 'Open inventory'} onPress={search ? () => setSearch('') : () => router.push('/(tabs)/inventory')} style={{ alignSelf: 'stretch', marginTop: 3 }} /></Card> : <View style={styles.productGrid}>{rows.map((product) => {
+    {!rows.length ? <IllustratedEmptyState image={require('@/assets/images/shop-illustrations/inventory/empty-cart.png')} title={search?'No matching products':'No products ready to sell'} description={search?'Try another name or category.':'Add products and receive stock before recording your first sale.'} action={<PrimaryButton label={search?'Clear search':'Open inventory'} onPress={search?()=>setSearch(''):()=>router.push('/(tabs)/inventory')}/>} /> : <View style={styles.productGrid}>{rows.map((product) => {
       const inCart = lines.find((line) => line.productId === product.id);
       return <Pressable key={product.id} onPress={() => addProduct(product)} style={({ pressed }) => [styles.productCard, pressed && { opacity: 0.86 }]}><View style={styles.productArt}><ReceiptText size={22} stroke={colors.purple} /></View><AppText variant="label" numberOfLines={2}>{product.name}</AppText><AppText variant="small" color={colors.secondary}>{product.category} · {product.stock_quantity} {product.unit}</AppText><View style={styles.productBottom}><AppText variant="amount" style={{ fontSize: 16 }}>{formatMoney(product.price_cents)}</AppText><View style={styles.addCircle}>{inCart ? <AppText variant="small" color="#fff">{inCart.quantity}</AppText> : <Plus size={16} stroke="#fff" />}</View></View></Pressable>;
     })}</View>}
@@ -96,7 +95,7 @@ export function SalesHistoryScreen() {
   useEffect(() => { void load(); }, [db, ownerId]);
   return <Page title="Sales history" subtitle="Every sale recorded on this device." back scroll={false}><ScrollView refreshControl={<RefreshControl refreshing={refreshing} onRefresh={load} tintColor={colors.purple} />} contentContainerStyle={{ gap: 10, paddingBottom: 24 }}>
     {sales.map((sale) => <Pressable key={sale.id} onPress={() => Alert.alert('Receipt ' + sale.receipt_number, (sale.customer_name || 'Walk-in customer') + '\n' + formatDateTime(sale.created_at) + '\nPaid ' + formatMoney(sale.paid_cents) + (sale.balance_cents ? '\nOwed ' + formatMoney(sale.balance_cents) : ''))}><Card style={styles.historyRow}><View style={styles.receiptIcon}><ReceiptText stroke={colors.purple} size={18} /></View><View style={{ flex: 1 }}><AppText variant="label">{sale.customer_name || 'Walk-in customer'}</AppText><AppText variant="small" color={colors.secondary} style={{ marginTop: 3 }}>{sale.receipt_number} · {formatDateTime(sale.created_at)}</AppText></View><View style={{ alignItems: 'flex-end', gap: 6 }}><AppText variant="label">{formatMoney(sale.total_cents)}</AppText><StatusBadge label={sale.status === 'PAID' ? 'Paid' : sale.status === 'PARTIAL' ? 'Part paid' : 'On credit'} tone={sale.status === 'PAID' ? 'green' : 'amber'} /></View></Card></Pressable>)}
-    {!sales.length ? <Card style={{ alignItems: 'center', gap: 8 }}><Image source={emptyArt} style={{ width: 125, height: 125 }} resizeMode="contain" /><AppText variant="heading">No sales recorded yet</AppText><AppText color={colors.secondary} style={{ textAlign: 'center' }}>Completed sales will appear here, with their payment and credit status.</AppText><PrimaryButton label="Start a sale" onPress={() => router.push('/sales/new')} style={{ alignSelf: 'stretch' }} /></Card> : null}
+    {!sales.length ? <IllustratedEmptyState image={require('@/assets/images/shop-illustrations/inventory/empty-cart.png')} title="No sales recorded yet" description="Completed sales will appear here, with their payment and credit status." action={<PrimaryButton label="Start a sale" onPress={() => router.push('/sales/new')} />} /> : null}
   </ScrollView></Page>;
 }
 

@@ -100,6 +100,15 @@ export async function transferStock(db: SQLiteDatabase, ownerId: string, product
 export async function listMovements(db: SQLiteDatabase, ownerId: string, productId?: string) { return db.getAllAsync<StockMovement>(`SELECT m.id, m.product_id, p.name AS product_name, m.movement_type, m.quantity, f.name AS from_location, t.name AS to_location, m.unit_cost_cents, m.note, m.created_at FROM stock_movements m JOIN products p ON p.id = m.product_id LEFT JOIN inventory_locations f ON f.id = m.from_location_id LEFT JOIN inventory_locations t ON t.id = m.to_location_id WHERE m.owner_id = ? ${productId ? 'AND m.product_id = ?' : ''} ORDER BY m.created_at DESC LIMIT 200`, ...(productId ? [ownerId, productId] : [ownerId])); }
 export async function addLocation(db: SQLiteDatabase, ownerId: string, name: string) {
   if (!name.trim()) throw new Error('Enter a location name.'); const id = Crypto.randomUUID(); const at = now();
-  await db.runAsync('INSERT INTO inventory_locations (id, owner_id, name, is_primary, created_at) VALUES (?, ?, ?, 0, ?)', id, ownerId, name.trim(), at).catch((error: unknown) => { throw new Error('That location already exists.'); });
-  await enqueueChange(db, ownerId, 'inventory_location', id, 'location.create', { id, name: name.trim(), created_at: at }, at); return id;
+  try {
+    await db.withTransactionAsync(async () => {
+      await db.runAsync('INSERT INTO inventory_locations (id, owner_id, name, is_primary, created_at) VALUES (?, ?, ?, 0, ?)', id, ownerId, name.trim(), at);
+      await enqueueChange(db, ownerId, 'inventory_location', id, 'location.create', { id, name: name.trim(), created_at: at }, at);
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message.toLowerCase() : '';
+    if (message.includes('unique') || message.includes('constraint')) throw new Error('That location already exists.');
+    throw error;
+  }
+  return id;
 }

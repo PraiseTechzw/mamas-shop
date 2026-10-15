@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { Image, Pressable, RefreshControl, ScrollView, StyleSheet, View } from 'react-native';
+import { Pressable, RefreshControl, ScrollView, StyleSheet, View } from 'react-native';
 import { router } from 'expo-router';
 import { useSQLiteContext } from 'expo-sqlite';
 import { ArrowRight, ArrowUpRight, Banknote, CircleAlert, CreditCard, Plus, ReceiptText, Users } from 'lucide-react-native';
@@ -9,8 +9,8 @@ import { getDashboardData, type DashboardData } from '@/db/repositories/dashboar
 import { useAuth } from '@/features/auth/auth-context';
 import { useCart } from '@/stores/cart';
 import { AppText, Card, PrimaryButton, SectionTitle } from '@/components/ui/primitives';
+import { IllustratedEmptyState } from '@/components/feedback/illustrated-empty-state';
 
-const emptyArt = require('@/assets/images/empty-states/no-items.png');
 const emptyData: DashboardData = { salesTodayCents: 0, salesTodayCount: 0, paymentsTodayCents: 0, creditOutstandingCents: 0, activeCustomers: 0, lowStockCount: 0, recentSales: [], weeklySales: [] };
 
 export function DashboardScreen() {
@@ -32,7 +32,7 @@ export function DashboardScreen() {
     <View style={styles.sectionHeading}><SectionTitle>Quick actions</SectionTitle></View>
     <View style={styles.quickGrid}><QuickAction label="New sale" icon={<Plus stroke="#FFFFFF" size={19} />} onPress={startSale} primary /><QuickAction label="Credit customers" icon={<Users stroke={colors.deepPurple} size={19} />} onPress={() => router.push('/credit/customers')} /><QuickAction label="Sales history" icon={<ReceiptText stroke={colors.deepPurple} size={19} />} onPress={() => router.push('/sales/history')} /><QuickAction label="Record repayment" icon={<CreditCard stroke={colors.deepPurple} size={19} />} onPress={() => router.push('/credit/customers')} /></View>
     <View style={styles.sectionHeading}><SectionTitle action="See all" onAction={() => router.push('/sales/history')}>Recent sales</SectionTitle></View>
-    {data.recentSales.length ? <Card style={{ paddingVertical: 2 }}>{data.recentSales.map((sale, index) => <View key={sale.id} style={[styles.recentRow, index < data.recentSales.length - 1 && styles.separator]}><View style={styles.receiptIcon}><ReceiptText size={17} stroke={colors.purple} /></View><View style={{ flex: 1 }}><AppText variant="label">{sale.customer_name || sale.receipt_number}</AppText><AppText variant="small" color={colors.secondary} style={{ marginTop: 3 }}>{formatDateTime(sale.created_at)} · {sale.status === 'PAID' ? 'Paid' : 'Credit balance'}</AppText></View><AppText variant="label">{formatMoney(sale.total_cents)}</AppText></View>)}</Card> : <Card style={styles.emptyCard}><Image source={emptyArt} resizeMode="contain" style={{ width: 118, height: 118 }} /><AppText variant="heading" style={{ textAlign: 'center' }}>Your first sale is waiting</AppText><AppText color={colors.secondary} style={{ textAlign: 'center', lineHeight: 21 }}>Once your products are added, sales and daily totals will appear here.</AppText><PrimaryButton label="Start a sale" onPress={startSale} style={{ alignSelf: 'stretch', marginTop: 2 }} /></Card>}
+    {data.recentSales.length ? <Card style={{ paddingVertical: 2 }}>{data.recentSales.map((sale, index) => <View key={sale.id} style={[styles.recentRow, index < data.recentSales.length - 1 && styles.separator]}><View style={styles.receiptIcon}><ReceiptText size={17} stroke={colors.purple} /></View><View style={{ flex: 1 }}><AppText variant="label">{sale.customer_name || sale.receipt_number}</AppText><AppText variant="small" color={colors.secondary} style={{ marginTop: 3 }}>{formatDateTime(sale.created_at)} · {sale.status === 'PAID' ? 'Paid' : 'Credit balance'}</AppText></View><AppText variant="label">{formatMoney(sale.total_cents)}</AppText></View>)}</Card> : <IllustratedEmptyState image={require('@/assets/images/shop-illustrations/inventory/empty-cart.png')} title="Your first sale is waiting" description="Once your products are added, sales and daily totals will appear here." action={<PrimaryButton label="Start a sale" onPress={startSale} />} />}
     <Card style={styles.chartCard}><View style={styles.sectionHeading}><View><AppText variant="heading">Sales this week</AppText><AppText variant="small" color={colors.secondary} style={{ marginTop: 3 }}>Recorded sales · USD</AppText></View><ArrowRight stroke={colors.secondary} size={18} /></View><View style={styles.chart}>{data.weeklySales.map((day, index) => <View key={day.label + index} style={styles.chartColumn}><AppText variant="small" color={colors.secondary}>{day.totalCents ? Math.round(day.totalCents / 100) : ''}</AppText><View style={styles.barTrack}><View style={[styles.bar, { height: Math.max(5, Math.round((day.totalCents / max) * 84)), backgroundColor: index === data.weeklySales.length - 1 ? colors.purple : '#BDB2FA' }]} /></View><AppText variant="small" color={colors.secondary}>{day.label}</AppText></View>)}</View></Card>
   </ScrollView>;
 }

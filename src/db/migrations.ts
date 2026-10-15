@@ -1,6 +1,6 @@
 import type { SQLiteDatabase } from 'expo-sqlite';
 
-const DATABASE_VERSION = 2;
+const DATABASE_VERSION = 3;
 
 export async function migrateDbIfNeeded(db: SQLiteDatabase) {
   const row = await db.getFirstAsync<{ user_version: number }>('PRAGMA user_version');
@@ -41,6 +41,13 @@ export async function migrateDbIfNeeded(db: SQLiteDatabase) {
       CREATE INDEX IF NOT EXISTS audit_log_date_idx ON audit_log(owner_id, created_at DESC);
     `);
     version = 2;
+  }
+  if (version < 3) {
+    const outboxColumns = await db.getAllAsync<{ name: string }>('PRAGMA table_info(sync_outbox)');
+    if (!outboxColumns.some((column) => column.name === 'next_attempt_at')) await db.execAsync('ALTER TABLE sync_outbox ADD COLUMN next_attempt_at TEXT');
+    await db.execAsync('CREATE INDEX IF NOT EXISTS sync_outbox_owner_created_idx ON sync_outbox(owner_id, created_at);');
+    await db.execAsync('CREATE TABLE IF NOT EXISTS sync_metadata (owner_id TEXT PRIMARY KEY NOT NULL, last_synced_at TEXT);');
+    version = 3;
   }
   await db.execAsync('PRAGMA user_version = ' + Math.min(version, DATABASE_VERSION));
 }

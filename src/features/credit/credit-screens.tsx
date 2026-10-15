@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { Alert, Pressable, StyleSheet, View } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useSQLiteContext } from 'expo-sqlite';
-import { ArrowDownLeft, ArrowUpRight, ChevronRight, CreditCard, Plus, Users } from 'lucide-react-native';
+import { ArrowDownLeft, ArrowUpRight, ChevronRight, CreditCard, Plus } from 'lucide-react-native';
 import { colors } from '@/constants/theme';
 import { formatDate, formatMoney, toCents } from '@/lib/format';
 import { createCustomer, getCustomer, listAccountEntries, listCustomers } from '@/db/repositories/customers';
@@ -11,6 +11,7 @@ import type { AccountEntry, Customer, PaymentMethod } from '@/db/schema';
 import { useCart } from '@/stores/cart';
 import { useAuth } from '@/features/auth/auth-context';
 import { AppText, Card, Field, Page, PrimaryButton, SecondaryButton, SectionTitle, StatusBadge } from '@/components/ui/primitives';
+import { IllustratedEmptyState } from '@/components/feedback/illustrated-empty-state';
 
 export function CreditCustomersScreen() { return <CustomerList />; }
 export function CreditSaleCustomerPicker() { return <CustomerList selectForCreditSale />; }
@@ -39,7 +40,7 @@ function CustomerList({ selectForCreditSale = false }: { selectForCreditSale?: b
     <Field label="Search customers" placeholder="Name or phone number" value={search} onChangeText={setSearch} />
     {!selectForCreditSale ? <Card style={styles.summaryCard}><View style={styles.summaryIcon}><CreditCard size={20} stroke={colors.deepPurple} /></View><View style={{ flex: 1 }}><AppText variant="small" color={colors.secondary}>TOTAL CREDIT OWED</AppText><AppText variant="amount">{formatMoney(customers.reduce((sum, person) => sum + person.balance_cents, 0))}</AppText></View><StatusBadge label={String(customers.filter((person) => person.balance_cents > 0).length) + ' accounts'} tone="amber" /></Card> : null}
     <SectionTitle>{(selectForCreditSale ? 'Customers' : 'All customers') + ' · ' + filtered.length}</SectionTitle>
-    {filtered.length ? filtered.map((customer) => <Pressable key={customer.id} onPress={() => choose(customer)}><Card style={styles.customerRow}><View style={styles.customerAvatar}><AppText variant="label" color={colors.deepPurple}>{customer.name.slice(0, 1).toUpperCase()}</AppText></View><View style={{ flex: 1 }}><AppText variant="label">{customer.name}</AppText><AppText variant="small" color={colors.secondary} style={{ marginTop: 3 }}>{customer.phone || 'No phone number'}</AppText></View><View style={{ alignItems: 'flex-end', gap: 5 }}><AppText variant="label" color={customer.balance_cents > 0 ? colors.danger : colors.success}>{formatMoney(customer.balance_cents)}</AppText><AppText variant="small" color={colors.secondary}>{customer.balance_cents > 0 ? 'Owed' : 'Clear'}</AppText></View><ChevronRight size={17} stroke={colors.secondary} /></Card></Pressable>) : <Card style={styles.empty}><Users size={27} stroke={colors.lavender} /><AppText variant="heading">{search ? 'No matching customers' : 'No customers yet'}</AppText><AppText color={colors.secondary} style={{ textAlign: 'center', lineHeight: 21 }}>{selectForCreditSale ? 'Add a customer first, then return here to start their credit sale.' : 'Save customers here to keep their credit sales and payments together.'}</AppText><PrimaryButton label={search ? 'Clear search' : 'Add your first customer'} onPress={() => search ? setSearch('') : setAdding(true)} style={{ alignSelf: 'stretch' }} /></Card>}
+    {filtered.length ? filtered.map((customer) => <Pressable key={customer.id} onPress={() => choose(customer)}><Card style={styles.customerRow}><View style={styles.customerAvatar}><AppText variant="label" color={colors.deepPurple}>{customer.name.slice(0, 1).toUpperCase()}</AppText></View><View style={{ flex: 1 }}><AppText variant="label">{customer.name}</AppText><AppText variant="small" color={colors.secondary} style={{ marginTop: 3 }}>{customer.phone || 'No phone number'}</AppText></View><View style={{ alignItems: 'flex-end', gap: 5 }}><AppText variant="label" color={customer.balance_cents > 0 ? colors.danger : colors.success}>{formatMoney(customer.balance_cents)}</AppText><AppText variant="small" color={colors.secondary}>{customer.balance_cents > 0 ? 'Owed' : 'Clear'}</AppText></View><ChevronRight size={17} stroke={colors.secondary} /></Card></Pressable>) : <IllustratedEmptyState image={require('@/assets/images/shop-illustrations/credit/customer-credit.png')} title={search ? 'No matching customers' : 'No customers yet'} description={selectForCreditSale ? 'Add a customer first, then return here to start their credit sale.' : 'Save customers here to keep their credit sales and payments together.'} action={<PrimaryButton label={search ? 'Clear search' : 'Add your first customer'} onPress={() => search ? setSearch('') : setAdding(true)} />} />}
   </Page>;
 }
 

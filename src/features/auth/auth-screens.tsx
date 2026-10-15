@@ -14,7 +14,7 @@ const storefront = require('@/assets/images/marketing/storefront-hero.png');
 function BrandHeader({ compact = false }: { compact?: boolean }) {
   return <View style={styles.brandBlock}>
     <Image source={logo} style={[styles.logo, compact && styles.smallLogo]} accessibilityLabel="Mama’s Shop shopping cart logo" />
-    <AppText variant="heading" style={styles.brandName}>Mama’s Shop</AppText>
+    <AppText variant="heading" style={[styles.brandName, compact && styles.compactBrandName]}>Mama’s Shop</AppText>
     <AppText variant="small" color={colors.deepPurple} style={styles.brandTagline}>Small Business · Big Dreams</AppText>
     {!compact ? <AppText variant="small" color={colors.secondary} style={styles.brandPromise}>Quality products · Fair prices · Serving our community</AppText> : null}
   </View>;
@@ -30,7 +30,10 @@ function AuthButton({ label, onPress, variant = 'primary', loading = false }: { 
 }
 
 function ZimbabweFooter() {
-  return <View style={styles.country}><AppText variant="small" color={colors.secondary}>🇿🇼  Proudly Zimbabwean</AppText></View>;
+  return <View style={styles.country}>
+    <View style={styles.footerDivider} />
+    <AppText variant="small" color={colors.secondary}>🇿🇼  Proudly Zimbabwean</AppText>
+  </View>;
 }
 
 export function WelcomeScreen() {
@@ -149,6 +152,7 @@ const styles = StyleSheet.create({
   logo: { width: 48, height: 48, marginBottom: 2 },
   smallLogo: { width: 42, height: 42 },
   brandName: { fontFamily: 'Poppins-SemiBold', fontSize: 23, color: colors.deepPurple },
+  compactBrandName: { fontSize: 21 },
   brandTagline: { fontFamily: 'Inter-Medium', letterSpacing: 0.2 },
   hero: { aspectRatio: 4 / 3, overflow: 'hidden', alignSelf: 'stretch', marginHorizontal: -24 },
   heroImage: { width: '100%', height: '100%' },
@@ -161,6 +165,7 @@ const styles = StyleSheet.create({
   buttonPressed: { opacity: 0.86, transform: [{ scale: 0.99 }] },
   buttonDisabled: { opacity: 0.65 },
   country: { alignItems: 'center', paddingTop: 2, marginTop: 'auto' },
+  footerDivider: { width: 54, height: 1, backgroundColor: colors.border, marginBottom: 7 },
   loginPage: { flexGrow: 1, paddingHorizontal: 24, paddingTop: 12, paddingBottom: 18, gap: 16 },
   backButton: { width: 38, height: 38, borderRadius: 13, backgroundColor: colors.lavenderTint, alignItems: 'center', justifyContent: 'center' },
   loginIntro: { alignItems: 'center', gap: 3, marginTop: 2, marginBottom: 2 },
