@@ -1,9 +1,9 @@
 import { useCallback, useEffect, useState } from 'react';
-import { Pressable, RefreshControl, ScrollView, StyleSheet, View } from 'react-native';
+import { Image, Pressable, RefreshControl, ScrollView, StyleSheet, View } from 'react-native';
 import Svg, { Circle } from 'react-native-svg';
 import { router } from 'expo-router';
 import { useSQLiteContext } from 'expo-sqlite';
-import { Banknote, Bell, CircleAlert, CreditCard, MapPin, ReceiptText } from 'lucide-react-native';
+import { Banknote, Bell, CircleAlert, CreditCard } from 'lucide-react-native';
 import { colors } from '@/constants/theme';
 import { formatMoney } from '@/lib/format';
 import { getDashboardData, type DashboardData } from '@/db/repositories/dashboard';
@@ -48,9 +48,9 @@ export function DashboardScreen() {
         <Pressable onPress={() => setBreakdown('seller')} style={[styles.segment, breakdown === 'seller' && styles.segmentActive]}><AppText variant="small" color={breakdown === 'seller' ? colors.deepPurple : colors.secondary}>By Seller</AppText></Pressable>
       </View>
       {breakdown === 'seller' && data.salesBySeller.length > 0 ? <SellerBreakdown rows={data.salesBySeller} ownerId={session?.user.id ?? ''} ownerName={firstName} /> : <View style={styles.breakdownEmpty}>
-        {breakdown === 'location' ? <MapPin size={22} stroke={colors.purple} /> : <ReceiptText size={22} stroke={colors.purple} />}
-        <AppText variant="label" style={{ marginTop: 8 }}>{breakdown === 'location' ? 'Sales aren’t assigned to locations yet' : 'Your first sale will appear here'}</AppText>
-        <AppText variant="small" color={colors.secondary} style={styles.emptyHint}>{breakdown === 'location' ? 'Location tracking for sales is not set up yet.' : 'Seller totals appear after you record sales.'}</AppText>
+        <Image source={require('@/assets/images/shop-illustrations/reports/analytics-unavailable.png')} resizeMode="contain" style={styles.emptyIllustration} accessibilityLabel="Sales breakdown illustration" />
+        <AppText variant="label" style={styles.emptyTitle}>{breakdown === 'location' ? 'No location breakdown yet' : 'No seller sales yet'}</AppText>
+        <AppText variant="small" color={colors.secondary} style={styles.emptyHint}>{breakdown === 'location' ? 'Sales aren’t currently linked to shop locations.' : 'Record a sale to see totals for each seller.'}</AppText>
       </View>}
     </Card>
   </ScrollView>;
@@ -112,7 +112,9 @@ const styles = StyleSheet.create({
   segmented: { flexDirection: 'row', gap: 7 },
   segment: { flex: 1, minHeight: 29, alignItems: 'center', justifyContent: 'center', borderRadius: 16, backgroundColor: '#F1F3F8' },
   segmentActive: { backgroundColor: '#EBE9FD' },
-  breakdownEmpty: { minHeight: 190, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 24, paddingVertical: 20, borderRadius: 15, backgroundColor: '#FAFAFE' },
+  breakdownEmpty: { minHeight: 205, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 24, paddingVertical: 14, borderRadius: 15, backgroundColor: '#FAFAFE' },
+  emptyIllustration: { width: 148, height: 112 },
+  emptyTitle: { marginTop: 3, textAlign: 'center' },
   emptyHint: { textAlign: 'center', marginTop: 4, lineHeight: 16 },
   sellerBreakdown: { minHeight: 200, flexDirection: 'row', alignItems: 'center', gap: 12 },
   donutWrap: { width: 150, height: 150, alignItems: 'center', justifyContent: 'center' },
