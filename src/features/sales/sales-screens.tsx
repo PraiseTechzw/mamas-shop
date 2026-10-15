@@ -17,9 +17,11 @@ import {
 } from "@/db/repositories/sales";
 import type {
   Customer,
+  InventoryLocation,
   PaymentMethod,
   Product,
   SaleSummary,
+  Seller,
 } from "@/db/schema";
 import { useAuth } from "@/features/auth/auth-context";
 import { formatDateTime, formatMoney, toCents } from "@/lib/format";
@@ -39,7 +41,11 @@ import {
   Search,
   Smartphone,
   Package,
+  MapPin,
+  Users,
 } from "lucide-react-native";
+import { ensurePrimaryLocation, listLocations } from "@/db/repositories/inventory";
+import { ensureOwnerSeller, listSellers } from "@/db/repositories/sellers";
 import { useEffect, useMemo, useState } from "react";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import {
@@ -68,10 +74,16 @@ export function SalesScreen() {
   const { session } = useAuth();
   const ownerId = session?.user.id ?? "";
   const [rows, setRows] = useState<Product[]>([]);
+  const [locations, setLocations] = useState<InventoryLocation[]>([]);
+  const [sellers, setSellers] = useState<Seller[]>([]);
   const [search, setSearch] = useState("");
   const [category, setCategory] = useState("All");
   const lines = useCart((state) => state.lines);
   const creditMode = useCart((state) => state.creditMode);
+  const locationId = useCart((state) => state.locationId);
+  const sellerId = useCart((state) => state.sellerId);
+  const setLocationId = useCart((state) => state.setLocationId);
+  const setSellerId = useCart((state) => state.setSellerId);
   const addProduct = useCart((state) => state.addProduct);
   const total = lines.reduce(
     (sum, item) => sum + Math.round(item.priceCents * item.quantity),
@@ -79,13 +91,26 @@ export function SalesScreen() {
   );
   useEffect(() => {
     let active = true;
-    void listProductsForSale(db, ownerId, search).then((data) => {
+    const ownerName = String(session?.user.user_metadata?.full_name ?? session?.user.email?.split("@")[0] ?? "Shop owner");
+    void Promise.all([ensurePrimaryLocation(db, ownerId), ensureOwnerSeller(db, ownerId, ownerName)]).then(async ([primary, ownerSeller]) => {
+      const [locationRows, sellerRows] = await Promise.all([listLocations(db, ownerId), listSellers(db, ownerId)]);
+      if (!active) return;
+      setLocations(locationRows);
+      setSellers(sellerRows);
+      if (!locationRows.some((location) => location.id === locationId)) setLocationId(primary.id);
+      if (!sellerRows.some((seller) => seller.id === sellerId)) setSellerId(ownerSeller.id);
+    });
+    return () => { active = false; };
+  }, [db, ownerId, session?.user.email, session?.user.user_metadata?.full_name, locationId, sellerId, setLocationId, setSellerId]);
+  useEffect(() => {
+    let active = true;
+    void listProductsForSale(db, ownerId, search, locationId).then((data) => {
       if (active) setRows(data);
     });
     return () => {
       active = false;
     };
-  }, [db, ownerId, search]);
+  }, [db, ownerId, search, locationId]);
   const categories = useMemo(
     () => ["All", ...Array.from(new Set(rows.map(saleCategory)))],
     [rows],
@@ -116,6 +141,10 @@ export function SalesScreen() {
         keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}
       >
+      <View style={styles.saleAssignment}>
+        <View style={styles.assignmentRow}><View style={styles.assignmentLabel}><MapPin size={15} stroke={colors.deepPurple}/><AppText variant="small" color={colors.secondary}>Location</AppText></View><ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.assignmentChoices}>{locations.map((location)=><Pressable key={location.id} accessibilityRole="button" accessibilityState={{selected:locationId===location.id}} onPress={()=>setLocationId(location.id)} style={[styles.assignmentChip,locationId===location.id&&styles.assignmentChipActive]}><AppText variant="small" color={locationId===location.id?colors.deepPurple:colors.secondary}>{location.name}</AppText></Pressable>)}</ScrollView></View>
+        <View style={styles.assignmentRow}><View style={styles.assignmentLabel}><Users size={15} stroke={colors.deepPurple}/><AppText variant="small" color={colors.secondary}>Seller</AppText></View><ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.assignmentChoices}>{sellers.map((seller)=><Pressable key={seller.id} accessibilityRole="button" accessibilityState={{selected:sellerId===seller.id}} onPress={()=>setSellerId(seller.id)} style={[styles.assignmentChip,sellerId===seller.id&&styles.assignmentChipActive]}><AppText variant="small" color={sellerId===seller.id?colors.deepPurple:colors.secondary}>{seller.name}</AppText></Pressable>)}</ScrollView></View>
+      </View>
       <Field
         label=""
         accessibilityLabel="Search products"
@@ -295,8 +324,12 @@ export function CheckoutScreen() {
   const lines = useCart((state) => state.lines);
   const customerId = useCart((state) => state.customerId);
   const creditMode = useCart((state) => state.creditMode);
+  const sellerId = useCart((state) => state.sellerId);
+  const locationId = useCart((state) => state.locationId);
   const clear = useCart((state) => state.clear);
   const [customer, setCustomer] = useState<Customer | null>(null);
+  const [sellerName, setSellerName] = useState('');
+  const [locationName, setLocationName] = useState('');
   const [method, setMethod] = useState<PaymentMethod>("CASH");
   const [changeDisposition, setChangeDisposition] = useState<"GIVEN" | "OWED">("GIVEN");
   const total = useMemo(
@@ -319,6 +352,15 @@ export function CheckoutScreen() {
       active = false;
     };
   }, [db, ownerId, customerId]);
+  useEffect(() => {
+    let active = true;
+    void Promise.all([listSellers(db, ownerId), listLocations(db, ownerId)]).then(([sellers, locations]) => {
+      if (!active) return;
+      setSellerName(sellers.find((seller) => seller.id === sellerId)?.name ?? 'Choose seller');
+      setLocationName(locations.find((location) => location.id === locationId)?.name ?? 'Choose location');
+    });
+    return () => { active = false; };
+  }, [db, ownerId, sellerId, locationId]);
   const suggestedPaidAmount = (total / 100).toFixed(2);
   const tenderedCents = Math.max(0, toCents(paidAmount ?? suggestedPaidAmount));
   const paidCents = Math.min(tenderedCents, total);
@@ -355,6 +397,8 @@ export function CheckoutScreen() {
         changeDueCents: changeDisposition === "OWED" ? changeCents : 0,
         method,
         createdBy: session?.user.id ?? null,
+        sellerId,
+        locationId,
         ownerId,
       });
       clear();
@@ -396,6 +440,7 @@ export function CheckoutScreen() {
         keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}
       >
+      <View style={styles.saleContextCard}><View style={styles.saleContextRow}><MapPin size={17} stroke={colors.deepPurple}/><AppText variant="small" color={colors.secondary}>Selling from</AppText><AppText variant="label" numberOfLines={1} style={styles.saleContextValue}>{locationName}</AppText></View><View style={styles.saleContextDivider}/><View style={styles.saleContextRow}><Users size={17} stroke={colors.deepPurple}/><AppText variant="small" color={colors.secondary}>Seller</AppText><AppText variant="label" numberOfLines={1} style={styles.saleContextValue}>{sellerName}</AppText></View></View>
       <Card style={styles.checkoutCard}>
         <SectionTitle>Order items</SectionTitle>
         {lines.map((line) => (
@@ -725,6 +770,16 @@ export function SalesHistoryScreen() {
 }
 
 const styles = StyleSheet.create({
+  saleAssignment: { gap: 8, padding: 10, borderWidth: 1, borderColor: colors.border, borderRadius: 15, backgroundColor: '#FFFFFF' },
+  assignmentRow: { minHeight: 34, flexDirection: 'row', alignItems: 'center', gap: 8 },
+  assignmentLabel: { width: 76, flexDirection: 'row', alignItems: 'center', gap: 5 },
+  assignmentChoices: { flexDirection: 'row', alignItems: 'center', gap: 7 },
+  assignmentChip: { minHeight: 30, justifyContent: 'center', paddingHorizontal: 10, borderRadius: 12, backgroundColor: '#F1F2F8' },
+  assignmentChipActive: { backgroundColor: colors.lavenderTint },
+  saleContextCard: { gap: 9, padding: 12, borderWidth: 1, borderColor: colors.border, borderRadius: 15, backgroundColor: '#FFFFFF' },
+  saleContextRow: { minHeight: 24, flexDirection: 'row', alignItems: 'center', gap: 8 },
+  saleContextValue: { flex: 1, textAlign: 'right' },
+  saleContextDivider: { height: StyleSheet.hairlineWidth, backgroundColor: colors.border },
   checkoutPage: { flex: 1 },
   checkoutScroller: { flex: 1 },
   checkoutContent: { gap: 14, paddingBottom: 126 },

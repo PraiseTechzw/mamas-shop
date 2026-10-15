@@ -6,16 +6,20 @@ type CartState = {
   lines: CartLine[];
   creditMode: boolean;
   customerId: string | null;
+  sellerId: string | null;
+  locationId: string | null;
   addProduct: (product: Product) => void;
   changeQuantity: (productId: string, delta: number) => void;
   removeProduct: (productId: string) => void;
   setCreditCustomer: (customerId: string | null) => void;
   setCreditMode: (enabled: boolean, customerId?: string | null) => void;
+  setSellerId: (sellerId: string | null) => void;
+  setLocationId: (locationId: string | null) => void;
   clear: () => void;
 };
 
 export const useCart = create<CartState>((set) => ({
-  lines: [], creditMode: false, customerId: null,
+  lines: [], creditMode: false, customerId: null, sellerId: null, locationId: null,
   addProduct: (product) => set((state) => {
     const current = state.lines.find((line) => line.productId === product.id);
     if (current) return { lines: state.lines.map((line) => line.productId === product.id ? { ...line, quantity: Math.min(line.quantity + 1, line.stockQuantity) } : line) };
@@ -25,7 +29,9 @@ export const useCart = create<CartState>((set) => ({
   removeProduct: (productId) => set((state) => ({ lines: state.lines.filter((line) => line.productId !== productId) })),
   setCreditCustomer: (customerId) => set({ customerId }),
   setCreditMode: (enabled, customerId = null) => set({ creditMode: enabled, customerId: enabled ? customerId : null }),
-  clear: () => set({ lines: [], creditMode: false, customerId: null }),
+  setSellerId: (sellerId) => set({ sellerId }),
+  setLocationId: (locationId) => set({ locationId }),
+  clear: () => set((state) => ({ lines: [], creditMode: false, customerId: null, sellerId: state.sellerId, locationId: state.locationId })),
 }));
 
 export type { CartLine };

@@ -1,6 +1,6 @@
 import type { SQLiteDatabase } from 'expo-sqlite';
 
-const DATABASE_VERSION = 4;
+const DATABASE_VERSION = 5;
 
 export async function migrateDbIfNeeded(db: SQLiteDatabase) {
   const row = await db.getFirstAsync<{ user_version: number }>('PRAGMA user_version');
@@ -53,6 +53,35 @@ export async function migrateDbIfNeeded(db: SQLiteDatabase) {
     const productColumns = await db.getAllAsync<{ name: string }>('PRAGMA table_info(products)');
     if (!productColumns.some((column) => column.name === 'image_uri')) await db.execAsync('ALTER TABLE products ADD COLUMN image_uri TEXT');
     version = 4;
+  }
+  if (version < 5) {
+    await db.execAsync(`
+      CREATE TABLE IF NOT EXISTS sellers (
+        id TEXT PRIMARY KEY NOT NULL,
+        owner_id TEXT NOT NULL,
+        name TEXT NOT NULL,
+        phone TEXT,
+        is_owner INTEGER NOT NULL DEFAULT 0 CHECK(is_owner IN (0, 1)),
+        is_active INTEGER NOT NULL DEFAULT 1 CHECK(is_active IN (0, 1)),
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        UNIQUE(owner_id, name)
+      );
+      CREATE UNIQUE INDEX IF NOT EXISTS sellers_one_owner_idx ON sellers(owner_id) WHERE is_owner = 1;
+      CREATE INDEX IF NOT EXISTS sellers_active_name_idx ON sellers(owner_id, is_active, name);
+    `);
+    const saleColumns = await db.getAllAsync<{ name: string }>('PRAGMA table_info(sales)');
+    if (!saleColumns.some((column) => column.name === 'seller_id')) await db.execAsync('ALTER TABLE sales ADD COLUMN seller_id TEXT REFERENCES sellers(id) ON DELETE SET NULL');
+    if (!saleColumns.some((column) => column.name === 'location_id')) await db.execAsync('ALTER TABLE sales ADD COLUMN location_id TEXT REFERENCES inventory_locations(id) ON DELETE SET NULL');
+    await db.execAsync(`
+      CREATE INDEX IF NOT EXISTS sales_seller_date_idx ON sales(owner_id, seller_id, created_at DESC);
+      CREATE INDEX IF NOT EXISTS sales_location_date_idx ON sales(owner_id, location_id, created_at DESC);
+      INSERT OR IGNORE INTO sellers (id, owner_id, name, is_owner, is_active, created_at, updated_at)
+        SELECT owner_id, owner_id, 'Shop owner', 1, 1, MIN(created_at), MIN(created_at) FROM sales GROUP BY owner_id;
+      UPDATE sales SET seller_id = owner_id WHERE seller_id IS NULL AND EXISTS (SELECT 1 FROM sellers WHERE sellers.id = sales.owner_id);
+      UPDATE sales SET location_id = (SELECT id FROM inventory_locations WHERE inventory_locations.owner_id = sales.owner_id ORDER BY is_primary DESC, created_at LIMIT 1) WHERE location_id IS NULL;
+    `);
+    version = 5;
   }
   await db.execAsync('PRAGMA user_version = ' + Math.min(version, DATABASE_VERSION));
 }

@@ -1,2 +1,2 @@
-import { BestSellersReportScreen } from '@/features/reports/report-screens';
-export default BestSellersReportScreen;
+import { SalesBySellerReportScreen } from '@/features/reports/report-screens';
+export default SalesBySellerReportScreen;

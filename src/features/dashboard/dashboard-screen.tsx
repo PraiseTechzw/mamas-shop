@@ -10,7 +10,7 @@ import { getDashboardData, type DashboardData } from '@/db/repositories/dashboar
 import { useAuth } from '@/features/auth/auth-context';
 import { AppText, Card, SectionTitle } from '@/components/ui/primitives';
 
-const emptyData: DashboardData = { salesTodayCents: 0, salesTodayCount: 0, paymentsTodayCents: 0, creditOutstandingCents: 0, lowStockCount: 0, salesBySeller: [] };
+const emptyData: DashboardData = { salesTodayCents: 0, salesTodayCount: 0, paymentsTodayCents: 0, creditOutstandingCents: 0, lowStockCount: 0, salesBySeller: [], salesByLocation: [] };
 const sellerColors = ['#4D35D7', '#F5A623', '#23A47A', '#E94E64', '#4388E8'];
 
 export function DashboardScreen() {
@@ -47,10 +47,11 @@ export function DashboardScreen() {
         <Pressable onPress={() => setBreakdown('location')} style={[styles.segment, breakdown === 'location' && styles.segmentActive]}><AppText variant="small" color={breakdown === 'location' ? colors.deepPurple : colors.secondary}>By Location</AppText></Pressable>
         <Pressable onPress={() => setBreakdown('seller')} style={[styles.segment, breakdown === 'seller' && styles.segmentActive]}><AppText variant="small" color={breakdown === 'seller' ? colors.deepPurple : colors.secondary}>By Seller</AppText></Pressable>
       </View>
-      {breakdown === 'seller' && data.salesBySeller.length > 0 ? <SellerBreakdown rows={data.salesBySeller} ownerId={session?.user.id ?? ''} ownerName={firstName} /> : <View style={styles.breakdownEmpty}>
+      {breakdown === 'seller' && data.salesBySeller.length > 0 ? <SellerBreakdown rows={data.salesBySeller} /> : breakdown === 'location' && data.salesByLocation.length > 0 ? <LocationBreakdown rows={data.salesByLocation} /> : <View style={styles.breakdownEmpty}>
         <Image source={require('@/assets/images/shop-illustrations/reports/analytics-unavailable.png')} resizeMode="contain" style={styles.emptyIllustration} accessibilityLabel="Sales breakdown illustration" />
         <AppText variant="label" style={styles.emptyTitle}>{breakdown === 'location' ? 'No location breakdown yet' : 'No seller sales yet'}</AppText>
-        <AppText variant="small" color={colors.secondary} style={styles.emptyHint}>{breakdown === 'location' ? 'Sales aren’t currently linked to shop locations.' : 'Record a sale to see totals for each seller.'}</AppText>
+        <AppText variant="small" color={colors.secondary} style={styles.emptyHint}>{breakdown === 'location' ? 'Choose a location on each sale to compare shop totals.' : 'Add seller profiles, then select a seller on each sale.'}</AppText>
+        <Pressable accessibilityRole="button" onPress={() => router.push(breakdown === 'location' ? '/settings/locations' : '/settings/team')} style={styles.breakdownSetup}><AppText variant="small" color={colors.deepPurple}>{breakdown === 'location' ? 'Manage locations' : 'Manage sellers'}</AppText><Banknote size={14} stroke={colors.deepPurple}/></Pressable>
       </View>}
     </Card>
   </ScrollView>;
@@ -64,7 +65,7 @@ function MetricCard({ title, value, caption, icon, tone }: { title: string; valu
   </Card>;
 }
 
-function SellerBreakdown({ rows, ownerId, ownerName }: { rows: DashboardData['salesBySeller']; ownerId: string; ownerName: string }) {
+function SellerBreakdown({ rows }: { rows: DashboardData['salesBySeller'] }) {
   const total = rows.reduce((sum, row) => sum + row.totalCents, 0);
   const circumference = 2 * Math.PI * 55;
   let offset = 0;
@@ -81,8 +82,13 @@ function SellerBreakdown({ rows, ownerId, ownerName }: { rows: DashboardData['sa
       </Svg>
       <View style={styles.donutCenter}><AppText variant="small" color={colors.secondary}>Sales</AppText><AppText variant="label">{rows.reduce((sum, row) => sum + row.saleCount, 0)}</AppText></View>
     </View>
-    <View style={styles.sellerLegend}>{rows.map((row, index) => <View key={row.sellerId ?? 'unassigned'} style={styles.legendRow}><View style={[styles.legendDot, { backgroundColor: sellerColors[index % sellerColors.length] }]} /><AppText variant="small" style={styles.legendName} numberOfLines={1}>{row.sellerId === ownerId ? ownerName : row.sellerId ? 'Team seller' : 'Unassigned'}</AppText><AppText variant="small" color={colors.secondary}>{total ? Math.round((row.totalCents / total) * 100) : 0}%</AppText><AppText variant="small" style={styles.legendAmount}>{formatMoney(row.totalCents)}</AppText></View>)}</View>
+    <View style={styles.sellerLegend}>{rows.map((row, index) => <View key={row.sellerId ?? 'unassigned'} style={styles.legendRow}><View style={[styles.legendDot, { backgroundColor: sellerColors[index % sellerColors.length] }]} /><AppText variant="small" style={styles.legendName} numberOfLines={1}>{row.sellerName}</AppText><AppText variant="small" color={colors.secondary}>{total ? Math.round((row.totalCents / total) * 100) : 0}%</AppText><AppText variant="small" style={styles.legendAmount}>{formatMoney(row.totalCents)}</AppText></View>)}</View>
   </View>;
+}
+
+function LocationBreakdown({ rows }: { rows: DashboardData['salesByLocation'] }) {
+  const total = rows.reduce((sum, row) => sum + row.totalCents, 0);
+  return <View style={styles.locationBreakdown}>{rows.map((row,index)=><View key={row.locationId??'unassigned'} style={styles.locationBarRow}><View style={styles.locationBarHeading}><View style={[styles.legendDot,{backgroundColor:sellerColors[index%sellerColors.length]}]}/><AppText variant="small" style={styles.legendName}>{row.locationName}</AppText><AppText variant="small" color={colors.secondary}>{row.saleCount} sales</AppText><AppText variant="small" style={styles.legendAmount}>{formatMoney(row.totalCents)}</AppText></View><View style={styles.barTrack}><View style={[styles.barFill,{width:`${total?Math.max(4,row.totalCents/total*100):0}%`,backgroundColor:sellerColors[index%sellerColors.length]}]}/></View></View>)}</View>;
 }
 
 const metricTones = {
@@ -116,6 +122,7 @@ const styles = StyleSheet.create({
   emptyIllustration: { width: 148, height: 112 },
   emptyTitle: { marginTop: 3, textAlign: 'center' },
   emptyHint: { textAlign: 'center', marginTop: 4, lineHeight: 16 },
+  breakdownSetup: { minHeight: 34, flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 4, paddingHorizontal: 10, borderRadius: 11, backgroundColor: colors.lavenderTint },
   sellerBreakdown: { minHeight: 200, flexDirection: 'row', alignItems: 'center', gap: 12 },
   donutWrap: { width: 150, height: 150, alignItems: 'center', justifyContent: 'center' },
   donutCenter: { position: 'absolute', alignItems: 'center', justifyContent: 'center' },
@@ -124,4 +131,9 @@ const styles = StyleSheet.create({
   legendDot: { width: 7, height: 7, borderRadius: 4 },
   legendName: { flex: 1 },
   legendAmount: { width: 59, textAlign: 'right' },
+  locationBreakdown: { minHeight: 190, justifyContent: 'center', gap: 17, paddingVertical: 14 },
+  locationBarRow: { gap: 7 },
+  locationBarHeading: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  barTrack: { height: 8, overflow: 'hidden', borderRadius: 5, backgroundColor: '#EDEBFA' },
+  barFill: { height: '100%', borderRadius: 5 },
 });
