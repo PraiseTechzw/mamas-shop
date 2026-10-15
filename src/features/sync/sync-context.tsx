@@ -88,12 +88,13 @@ export function SyncProvider({ children }: PropsWithChildren) {
 export function useSyncStatus() { return useContext(SyncContext); }
 
 export function NetworkSyncBanner() {
+  const { session } = useAuth();
   const { connection, syncing, pending, failed, unavailable, lastSyncedAt } = useSyncStatus();
   const offline = connection === 'offline';
   const needsSetup = unavailable === 'not-configured';
   const failedState = failed > 0 && !offline;
   const show = offline || connection === 'online' || syncing || pending > 0 || needsSetup;
-  if (!show) return null;
+  if (!session || !show) return null;
   const image = offline ? offlineArt : failedState ? failedArt : syncing ? pendingArt : pending ? pendingArt : completeArt;
   const message = offline ? 'Offline · changes stay on this device' : needsSetup ? 'Online · cloud sync needs setup' : syncing ? 'Syncing saved changes…' : failedState ? `${failed} changes will retry automatically` : pending ? `${pending} changes waiting to sync` : 'Online · all saved changes uploaded';
   return <View accessibilityLiveRegion="polite" style={[styles.banner, offline && styles.offline, failedState && styles.failed]}>

@@ -1,17 +1,21 @@
-import { useState } from 'react';
-import { ActivityIndicator, Image, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import { useState, type ReactNode } from 'react';
+import { ActivityIndicator, Image, ImageBackground, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
-import { ArrowLeft, Eye, EyeOff } from 'lucide-react-native';
+import { ArrowLeft, ArrowRight, Eye, EyeOff, Heart, ShieldCheck, Tag, Truck } from 'lucide-react-native';
 import { colors } from '@/constants/theme';
 import { AppText, Field } from '@/components/ui/primitives';
 import { useAuth } from './auth-context';
 import { supabase } from '@/lib/supabase';
 
 const logo = require('@/assets/images/brand/cart-mark.png');
-const storefront = require('@/assets/images/marketing/storefront-hero.png');
+const welcomeLogo = require('@/assets/images/brand/Mama’s Shop Speedy Cart Logo.png');
+const welcomeStorefront = require('@/assets/images/marketing/Sunny Mama’s Shop Neighborhood Market.png');
 
 function BrandHeader({ compact = false }: { compact?: boolean }) {
+  if (!compact) return <View style={styles.brandBlock}>
+    <Image source={welcomeLogo} resizeMode="contain" style={styles.welcomeLogo} accessibilityLabel="Mama’s Shop, Small Business · Big Dreams" />
+  </View>;
   return <View style={styles.brandBlock}>
     <Image source={logo} style={[styles.logo, compact && styles.smallLogo]} accessibilityLabel="Mama’s Shop shopping cart logo" />
     <AppText variant="heading" style={[styles.brandName, compact && styles.compactBrandName]}>Mama’s Shop</AppText>
@@ -20,31 +24,41 @@ function BrandHeader({ compact = false }: { compact?: boolean }) {
   </View>;
 }
 
-function AuthButton({ label, onPress, variant = 'primary', loading = false }: { label: string; onPress: () => void; variant?: 'primary' | 'secondary'; loading?: boolean }) {
+function AuthButton({ label, onPress, variant = 'primary', loading = false, icon }: { label: string; onPress: () => void; variant?: 'primary' | 'secondary'; loading?: boolean; icon?: ReactNode }) {
   const primary = variant === 'primary';
   return <Pressable accessibilityRole="button" onPress={onPress} disabled={loading} style={({ pressed }) => [styles.buttonTouchArea, pressed && !loading && styles.buttonPressed]}>
     <View style={[styles.authButton, primary ? styles.primaryAction : styles.secondaryAction, loading && styles.buttonDisabled]}>
-      {loading ? <ActivityIndicator size="small" color={primary ? '#FFFFFF' : colors.purple} /> : <AppText variant="label" color={primary ? '#FFFFFF' : colors.deepPurple} style={styles.actionLabel}>{label}</AppText>}
+      {loading ? <ActivityIndicator size="small" color={primary ? '#FFFFFF' : '#0646CE'} /> : <><AppText variant="label" color={primary ? '#FFFFFF' : '#0646CE'} style={styles.actionLabel}>{label}</AppText>{icon}</>}
     </View>
   </Pressable>;
 }
 
 function ZimbabweFooter() {
-  return <View style={styles.country}>
-    <View style={styles.footerDivider} />
-    <AppText variant="small" color={colors.secondary}>🇿🇼  Proudly Zimbabwean</AppText>
-  </View>;
+  return <View style={styles.country}><AppText style={styles.flag}>🇿🇼</AppText><View style={styles.footerDivider} /><AppText variant="label" color="#0646CE">Proudly Zimbabwean</AppText></View>;
+}
+
+function WelcomeBenefits() {
+  const benefits = [
+    { label: 'Safe &\nSecure', Icon: ShieldCheck, color: '#1764E8' },
+    { label: 'Fast\nDelivery', Icon: Truck, color: '#F0A500' },
+    { label: 'Great\nPrices', Icon: Tag, color: '#247A34' },
+    { label: 'Local\nBusiness', Icon: Heart, color: '#F13E44' },
+  ];
+  return <View style={styles.benefits}>{benefits.map(({ label, Icon, color }) => <View key={label} style={styles.benefit}>
+    <View style={[styles.benefitIcon, { backgroundColor: color }]}><Icon size={19} color="#FFFFFF" fill={label.startsWith('Local') ? '#FFFFFF' : 'none'} strokeWidth={2.5} /></View>
+    <AppText variant="small" color="#0C3BA5" style={styles.benefitLabel}>{label}</AppText>
+  </View>)}</View>;
 }
 
 export function WelcomeScreen() {
   return <SafeAreaView className="flex-1 bg-canvas" edges={['top', 'bottom']}>
     <ScrollView className="flex-1 bg-canvas" contentContainerStyle={styles.welcome}>
       <BrandHeader />
-      <View style={styles.hero}>
-        <Image source={storefront} resizeMode="cover" style={styles.heroImage} accessibilityLabel="Mama’s Shop family grocery storefront" />
-      </View>
+      <AppText variant="small" color="#536B91" style={styles.welcomePromise}>Quality products  •  Fair prices  •{ '\n' }Serving our community</AppText>
+      <WelcomeBenefits />
+      <ImageBackground source={welcomeStorefront} resizeMode="cover" style={styles.hero} imageStyle={styles.heroImage} accessibilityLabel="Sunny Mama’s Shop neighborhood market storefront" />
       <View style={styles.welcomeActions}>
-        <AuthButton label="Get Started" onPress={() => router.push('/(auth)/login')} />
+        <AuthButton label="Get Started" icon={<ArrowRight size={21} color="#FFFFFF" />} onPress={() => router.push('/(auth)/login')} />
         <AuthButton label="Log In" variant="secondary" onPress={() => router.push('/(auth)/login')} />
       </View>
       <ZimbabweFooter />
@@ -146,26 +160,33 @@ export function LoginScreen() {
 }
 
 const styles = StyleSheet.create({
-  welcome: { flexGrow: 1, justifyContent: 'flex-start', paddingHorizontal: 24, paddingTop: 20, paddingBottom: 12, gap: 14 },
-  brandBlock: { alignItems: 'center', gap: 4 },
+  welcome: { flexGrow: 1, justifyContent: 'flex-start', paddingHorizontal: 22, paddingTop: 8, paddingBottom: 12, gap: 8 },
+  brandBlock: { alignItems: 'center', gap: 4, alignSelf: 'stretch' },
+  welcomeLogo: { width: '100%', aspectRatio: 2.34, maxHeight: 142 },
+  welcomePromise: { textAlign: 'center', fontSize: 13, lineHeight: 19, marginTop: -7 },
+  benefits: { flexDirection: 'row', justifyContent: 'space-around', alignItems: 'flex-start', paddingHorizontal: 2, paddingTop: 2, paddingBottom: 3 },
+  benefit: { flex: 1, alignItems: 'center', gap: 4 },
+  benefitIcon: { width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center' },
+  benefitLabel: { fontFamily: 'Inter-SemiBold', fontSize: 11, lineHeight: 14, textAlign: 'center' },
   brandPromise: { textAlign: 'center', fontSize: 10, lineHeight: 14, marginTop: 0 },
-  logo: { width: 48, height: 48, marginBottom: 2 },
-  smallLogo: { width: 42, height: 42 },
-  brandName: { fontFamily: 'Poppins-SemiBold', fontSize: 23, color: colors.deepPurple },
-  compactBrandName: { fontSize: 21 },
-  brandTagline: { fontFamily: 'Inter-Medium', letterSpacing: 0.2 },
-  hero: { aspectRatio: 4 / 3, overflow: 'hidden', alignSelf: 'stretch', marginHorizontal: -24 },
+  logo: { width: 46, height: 46, marginBottom: 2 },
+  smallLogo: { width: 40, height: 40 },
+  brandName: { fontFamily: 'Poppins-SemiBold', fontSize: 32, lineHeight: 38, color: colors.deepPurple },
+  compactBrandName: { fontSize: 26, lineHeight: 32 },
+  brandTagline: { fontFamily: 'Inter-Medium', letterSpacing: 0.2, marginTop: 2 },
+  hero: { width: '100%', aspectRatio: 1.5, overflow: 'hidden', alignSelf: 'stretch', backgroundColor: '#D9E9FF' },
   heroImage: { width: '100%', height: '100%' },
-  welcomeActions: { gap: 10 },
+  welcomeActions: { gap: 9, marginTop: 2 },
   buttonTouchArea: { width: '100%' },
-  authButton: { minHeight: 52, width: '100%', borderRadius: 15, paddingHorizontal: 18, alignItems: 'center', justifyContent: 'center', borderWidth: 1 },
-  primaryAction: { backgroundColor: colors.purple, borderColor: colors.purple },
-  secondaryAction: { backgroundColor: colors.surface, borderColor: colors.purple },
-  actionLabel: { fontFamily: 'Inter-SemiBold' },
+  authButton: { minHeight: 54, width: '100%', borderRadius: 28, paddingHorizontal: 18, alignItems: 'center', justifyContent: 'center', flexDirection: 'row', gap: 12, borderWidth: 1.5 },
+  primaryAction: { backgroundColor: '#0646CE', borderColor: '#0646CE' },
+  secondaryAction: { backgroundColor: colors.surface, borderColor: '#1454F5' },
+  actionLabel: { fontFamily: 'Inter-SemiBold', fontSize: 16, letterSpacing: 0.1 },
   buttonPressed: { opacity: 0.86, transform: [{ scale: 0.99 }] },
   buttonDisabled: { opacity: 0.65 },
-  country: { alignItems: 'center', paddingTop: 2, marginTop: 'auto' },
-  footerDivider: { width: 54, height: 1, backgroundColor: colors.border, marginBottom: 7 },
+  country: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', paddingTop: 5, marginTop: 'auto', gap: 12 },
+  flag: { fontSize: 23 },
+  footerDivider: { width: 1.5, height: 22, borderRadius: 999, backgroundColor: '#1454F5' },
   loginPage: { flexGrow: 1, paddingHorizontal: 24, paddingTop: 12, paddingBottom: 18, gap: 16 },
   backButton: { width: 38, height: 38, borderRadius: 13, backgroundColor: colors.lavenderTint, alignItems: 'center', justifyContent: 'center' },
   loginIntro: { alignItems: 'center', gap: 3, marginTop: 2, marginBottom: 2 },
