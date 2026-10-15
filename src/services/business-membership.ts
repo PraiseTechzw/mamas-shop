@@ -1,0 +1,45 @@
+import type { SQLiteDatabase } from 'expo-sqlite';
+import { supabase } from '@/lib/supabase';
+
+export async function persistBusinessScope(db: SQLiteDatabase, userId: string, businessId: string) {
+  await db.runAsync('INSERT INTO business_scopes (user_id, business_id, updated_at) VALUES (?, ?, ?) ON CONFLICT(user_id) DO UPDATE SET business_id = excluded.business_id, updated_at = excluded.updated_at', userId, businessId, new Date().toISOString());
+}
+
+export async function createBusinessInvite(code: string, businessName: string, inviteeEmail = '') {
+  if (!supabase) throw new Error('Connect this app to Supabase before creating a business invitation.');
+  const { data, error } = await supabase.rpc('create_business_invite', {
+    p_code: code,
+    p_business_name: businessName,
+    p_invitee_email: inviteeEmail.trim() || null,
+  });
+  if (error) throw error;
+  const row = Array.isArray(data) ? data[0] : data;
+  if (!row?.invite_id || !row?.expires_at) throw new Error('The invitation could not be created.');
+  return { id: String(row.invite_id), expiresAt: String(row.expires_at) };
+}
+
+export async function joinBusiness(db: SQLiteDatabase, userId: string, code: string) {
+  if (!supabase) throw new Error('Connect this app to Supabase before accepting an invitation.');
+  const cleanCode = code.trim().toLowerCase();
+  if (cleanCode.length < 32) throw new Error('Enter the full invitation code from the shop owner.');
+  if (cleanCode === userId.toLowerCase()) throw new Error('That invitation code is invalid.');
+
+  const personalRecords = await db.getFirstAsync<{ count: number }>(`
+    SELECT
+      (SELECT COUNT(*) FROM products WHERE owner_id = ?) +
+      (SELECT COUNT(*) FROM sales WHERE owner_id = ?) +
+      (SELECT COUNT(*) FROM customers WHERE owner_id = ?) +
+      (SELECT COUNT(*) FROM expenses WHERE owner_id = ?) AS count
+  `, userId, userId, userId, userId);
+  if ((personalRecords?.count ?? 0) > 0) throw new Error('This login already has shop records. Use a new staff login so its existing business data stays separate.');
+  const pending = await db.getFirstAsync<{ count: number }>('SELECT COUNT(*) AS count FROM sync_outbox WHERE owner_id = ?', userId);
+  if ((pending?.count ?? 0) > 0) throw new Error('Sync this login’s pending changes before joining another business.');
+
+  const { data, error } = await supabase.rpc('join_business_with_code', { p_code: cleanCode });
+  if (error) throw error;
+  const row = Array.isArray(data) ? data[0] : data;
+  if (!row?.owner_id) throw new Error('The invitation could not be accepted.');
+  const businessId = String(row.owner_id);
+  await persistBusinessScope(db, userId, businessId);
+  return { businessId, businessName: String(row.business_name ?? 'Shop') };
+}

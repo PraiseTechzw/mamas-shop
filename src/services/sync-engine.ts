@@ -32,7 +32,7 @@ export async function syncOutbox(db: SQLiteDatabase, ownerId: string, force = fa
   if (!ownerId) return { synced: 0, downloaded: 0, pending: 0, failed: 0, conflicts: 0, unavailable: 'signed-out' };
 
   const { data: { session }, error: authError } = await supabase.auth.getSession();
-  if (authError || session?.user.id !== ownerId) return { synced: 0, downloaded: 0, pending: 0, failed: 0, conflicts: 0, unavailable: 'signed-out' };
+  if (authError || !session) return { synced: 0, downloaded: 0, pending: 0, failed: 0, conflicts: 0, unavailable: 'signed-out' };
 
   const now = new Date().toISOString();
   const rows = await db.getAllAsync<OutboxRow>(

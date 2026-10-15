@@ -72,9 +72,9 @@ function saleCategory(product: Product) {
 
 export function SalesScreen() {
   const db = useSQLiteContext();
-  const { session } = useAuth();
+  const { session, businessId } = useAuth();
   const { revision } = useSyncStatus();
-  const ownerId = session?.user.id ?? "";
+  const ownerId = businessId ?? session?.user.id ?? "";
   const [rows, setRows] = useState<Product[]>([]);
   const [productLoadError, setProductLoadError] = useState('');
   const [productRetry, setProductRetry] = useState(0);
@@ -326,8 +326,8 @@ const methods: {
 export function CheckoutScreen() {
   const insets = useSafeAreaInsets();
   const db = useSQLiteContext();
-  const { session } = useAuth();
-  const ownerId = session?.user.id ?? "";
+  const { session, businessId } = useAuth();
+  const ownerId = businessId ?? session?.user.id ?? "";
   const lines = useCart((state) => state.lines);
   const customerId = useCart((state) => state.customerId);
   const creditMode = useCart((state) => state.creditMode);
@@ -646,9 +646,9 @@ export function CheckoutScreen() {
 
 export function SalesHistoryScreen() {
   const db = useSQLiteContext();
-  const { session } = useAuth();
+  const { session, businessId } = useAuth();
   const { revision } = useSyncStatus();
-  const ownerId = session?.user.id ?? "";
+  const ownerId = businessId ?? session?.user.id ?? "";
   const [sales, setSales] = useState<SaleSummary[]>([]);
   const [refreshing, setRefreshing] = useState(false);
   const [loading, setLoading] = useState(true);

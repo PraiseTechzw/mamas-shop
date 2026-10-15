@@ -27,6 +27,20 @@ export async function ensureOwnerSeller(db: SQLiteDatabase, ownerId: string, nam
   return seller;
 }
 
+export async function ensureUserSeller(db: SQLiteDatabase, ownerId: string, userId: string, name: string) {
+  const existing = await db.getFirstAsync<Seller>('SELECT id, owner_id, name, phone, is_owner, is_active FROM sellers WHERE id = ? AND owner_id = ?', userId, ownerId);
+  if (existing) return existing;
+  const cleanName = name.trim() || 'Shop staff';
+  const now = new Date().toISOString();
+  await db.withTransactionAsync(async () => {
+    const inserted = await db.runAsync('INSERT OR IGNORE INTO sellers (id, owner_id, name, is_owner, is_active, created_at, updated_at) VALUES (?, ?, ?, 0, 1, ?, ?)', userId, ownerId, cleanName, now, now);
+    if (inserted.changes === 1) await enqueueChange(db, ownerId, 'seller', userId, 'seller.create', { id: userId, name: cleanName, is_owner: false, created_at: now }, now);
+  });
+  const seller = await db.getFirstAsync<Seller>('SELECT id, owner_id, name, phone, is_owner, is_active FROM sellers WHERE id = ? AND owner_id = ?', userId, ownerId);
+  if (!seller) throw new Error('Could not create a seller profile for this staff account.');
+  return seller;
+}
+
 export async function createSeller(db: SQLiteDatabase, ownerId: string, name: string, phone = '') {
   const cleanName = name.trim();
   if (!cleanName) throw new Error('Enter the seller’s name.');

@@ -1,6 +1,6 @@
 import type { SQLiteDatabase } from 'expo-sqlite';
 
-const DATABASE_VERSION = 7;
+const DATABASE_VERSION = 8;
 
 export async function migrateDbIfNeeded(db: SQLiteDatabase) {
   const row = await db.getFirstAsync<{ user_version: number }>('PRAGMA user_version');
@@ -110,6 +110,16 @@ export async function migrateDbIfNeeded(db: SQLiteDatabase) {
     const conflictColumns = await db.getAllAsync<{ name: string }>('PRAGMA table_info(sync_conflicts)');
     if (!conflictColumns.some((column) => column.name === 'payload_json')) await db.execAsync("ALTER TABLE sync_conflicts ADD COLUMN payload_json TEXT NOT NULL DEFAULT '{}'");
     version = 7;
+  }
+  if (version < 8) {
+    await db.execAsync(`
+      CREATE TABLE IF NOT EXISTS business_scopes (
+        user_id TEXT PRIMARY KEY NOT NULL,
+        business_id TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      );
+    `);
+    version = 8;
   }
   await db.execAsync('PRAGMA user_version = ' + Math.min(version, DATABASE_VERSION));
 }

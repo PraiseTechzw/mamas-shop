@@ -22,8 +22,8 @@ function CustomerList({ selectForCreditSale = false }: { selectForCreditSale?: b
   const preserveCart = params.preserveCart === 'true';
   const selectingChangeCustomer = params.purpose === 'change';
   const db = useSQLiteContext();
-  const { session } = useAuth();
-  const ownerId = session?.user.id ?? '';
+  const { session, businessId } = useAuth();
+  const ownerId = businessId ?? session?.user.id ?? '';
   const { revision } = useSyncStatus();
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [adding, setAdding] = useState(false);
@@ -62,8 +62,8 @@ function CustomerList({ selectForCreditSale = false }: { selectForCreditSale?: b
 
 export function CustomerAccountScreen() {
   const db = useSQLiteContext();
-  const { session } = useAuth();
-  const ownerId = session?.user.id ?? '';
+  const { session, businessId } = useAuth();
+  const ownerId = businessId ?? session?.user.id ?? '';
   const { revision } = useSyncStatus();
   const params = useLocalSearchParams<{ customerId: string }>();
   const customerId = Array.isArray(params.customerId) ? params.customerId[0] : params.customerId;
@@ -85,8 +85,8 @@ export function CustomerAccountScreen() {
 
 export function RepaymentScreen() {
   const db = useSQLiteContext();
-  const { session } = useAuth();
-  const ownerId = session?.user.id ?? '';
+  const { session, businessId } = useAuth();
+  const ownerId = businessId ?? session?.user.id ?? '';
   const params = useLocalSearchParams<{ customerId?: string }>();
   const customerId = Array.isArray(params.customerId) ? params.customerId[0] : params.customerId;
   const [customer, setCustomer] = useState<Customer | null>(null);

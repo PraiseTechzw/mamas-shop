@@ -33,8 +33,8 @@ const failedArt = require('@/assets/images/shop-illustrations/sync/sync-failed.p
 
 export function SyncProvider({ children }: PropsWithChildren) {
   const db = useSQLiteContext();
-  const { session, configured } = useAuth();
-  const ownerId = session?.user.id ?? '';
+  const { session, businessId, configured } = useAuth();
+  const ownerId = session ? businessId ?? '' : '';
   const [connection, setConnection] = useState<ConnectionState>('checking');
   const [syncing, setSyncing] = useState(false);
   const [pending, setPending] = useState(0);
