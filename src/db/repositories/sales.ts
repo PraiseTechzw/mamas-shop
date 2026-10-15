@@ -28,6 +28,8 @@ export type RecordSaleInput = {
   items: SaleLineInput[];
   customerId: string | null;
   amountPaidCents: number;
+  amountTenderedCents?: number;
+  changeDueCents?: number;
   method: PaymentMethod;
   createdBy: string | null;
   ownerId: string;
@@ -53,9 +55,13 @@ export async function recordSale(db: SQLiteDatabase, input: RecordSaleInput) {
 
   if (input.amountPaidCents < 0 || input.amountPaidCents > totalCents) throw new Error('The amount paid must be between zero and the sale total.');
   const balanceCents = totalCents - input.amountPaidCents;
+  const changeDueCents = input.changeDueCents ?? 0;
+  const amountTenderedCents = input.amountTenderedCents ?? input.amountPaidCents;
+  if (!Number.isInteger(amountTenderedCents) || amountTenderedCents < 0 || !Number.isInteger(changeDueCents) || changeDueCents < 0 || changeDueCents > Math.max(0, amountTenderedCents - totalCents) || (changeDueCents > 0 && input.method !== 'CASH')) throw new Error('Change due amount is invalid.');
+  if (changeDueCents > 0 && !input.customerId) throw new Error('Choose a customer to record change they will collect later.');
   if (balanceCents > 0 && !input.customerId) throw new Error('Choose a credit customer before leaving a balance.');
   const status = balanceCents === 0 ? 'PAID' : input.amountPaidCents > 0 ? 'PARTIAL' : 'CREDIT';
-  const outboxPayload = { id: saleId, receipt_number: receiptNumber, customer_id: input.customerId, total_cents: totalCents, paid_cents: input.amountPaidCents, balance_cents: balanceCents, status, created_at: now, items: lines };
+  const outboxPayload = { id: saleId, receipt_number: receiptNumber, customer_id: input.customerId, total_cents: totalCents, paid_cents: input.amountPaidCents, balance_cents: balanceCents, amount_tendered_cents: amountTenderedCents, change_due_cents: changeDueCents, status, created_at: now, items: lines };
 
   await db.withTransactionAsync(async () => {
     await ensurePrimaryLocation(db, input.ownerId);
@@ -85,8 +91,9 @@ export async function recordSale(db: SQLiteDatabase, input: RecordSaleInput) {
     }
     if (input.amountPaidCents > 0) {
       const paymentId = Crypto.randomUUID();
-      await db.runAsync('INSERT INTO payments (id, owner_id, customer_id, sale_id, amount_cents, method, kind, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)', paymentId, input.ownerId, input.customerId, saleId, input.amountPaidCents, input.method, 'SALE', now);
-      if (input.customerId) await db.runAsync('INSERT INTO account_entries (id, owner_id, customer_id, sale_id, payment_id, entry_type, amount_cents, note, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)', Crypto.randomUUID(), input.ownerId, input.customerId, saleId, paymentId, 'PAYMENT', -input.amountPaidCents, 'Payment received · ' + input.method, now);
+      const paymentNote = 'Payment received · ' + input.method + (changeDueCents > 0 ? ' · ' + (changeDueCents / 100).toFixed(2) + ' change owed to customer' : '');
+      await db.runAsync('INSERT INTO payments (id, owner_id, customer_id, sale_id, amount_cents, method, kind, note, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)', paymentId, input.ownerId, input.customerId, saleId, input.amountPaidCents, input.method, 'SALE', paymentNote, now);
+      if (input.customerId) await db.runAsync('INSERT INTO account_entries (id, owner_id, customer_id, sale_id, payment_id, entry_type, amount_cents, note, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)', Crypto.randomUUID(), input.ownerId, input.customerId, saleId, paymentId, 'PAYMENT', -input.amountPaidCents, paymentNote, now);
     }
     await enqueueChange(db, input.ownerId, 'sale', saleId, 'sale.create', outboxPayload, now);
   });

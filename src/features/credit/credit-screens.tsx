@@ -17,8 +17,9 @@ export function CreditCustomersScreen() { return <CustomerList />; }
 export function CreditSaleCustomerPicker() { return <CustomerList selectForCreditSale />; }
 
 function CustomerList({ selectForCreditSale = false }: { selectForCreditSale?: boolean }) {
-  const params = useLocalSearchParams<{ preserveCart?: string }>();
+  const params = useLocalSearchParams<{ preserveCart?: string; purpose?: string }>();
   const preserveCart = params.preserveCart === 'true';
+  const selectingChangeCustomer = params.purpose === 'change';
   const db = useSQLiteContext();
   const { session } = useAuth();
   const ownerId = session?.user.id ?? '';
@@ -36,13 +37,18 @@ function CustomerList({ selectForCreditSale = false }: { selectForCreditSale?: b
   const choose = (customer: Customer) => {
     if (selectForCreditSale) {
       if (!preserveCart) useCart.getState().clear();
-      useCart.getState().setCreditMode(true, customer.id);
-      if (preserveCart) router.back();
-      else router.push('/sales/new');
+      if (selectingChangeCustomer) {
+        useCart.getState().setCreditCustomer(customer.id);
+        router.back();
+      } else {
+        useCart.getState().setCreditMode(true, customer.id);
+        if (preserveCart) router.back();
+        else router.push('/sales/new');
+      }
     }
     else router.push({ pathname: '/credit/[customerId]', params: { customerId: customer.id } });
   };
-  return <Page title={selectForCreditSale ? 'Choose a customer' : 'Credit customers'} subtitle={selectForCreditSale ? 'Select who will receive this sale on account.' : 'Follow balances and repayments in one place.'} back={selectForCreditSale} right={!selectForCreditSale ? <Pressable onPress={() => setAdding((value) => !value)} hitSlop={8} style={styles.addIcon}><Plus size={20} stroke={colors.purple} /></Pressable> : null}>
+  return <Page title={selectForCreditSale ? selectingChangeCustomer ? 'Change collection' : 'Choose a customer' : 'Credit customers'} subtitle={selectForCreditSale ? selectingChangeCustomer ? 'Choose who will collect the change from this sale.' : 'Select who will receive this sale on account.' : 'Follow balances and repayments in one place.'} back={selectForCreditSale} right={!selectForCreditSale ? <Pressable onPress={() => setAdding((value) => !value)} hitSlop={8} style={styles.addIcon}><Plus size={20} stroke={colors.purple} /></Pressable> : null}>
     {adding ? <Card style={{ gap: 11 }}><AppText variant="heading">Add a customer</AppText><Field label="Customer name" placeholder="e.g. Tinashe Moyo" value={name} onChangeText={setName} autoCapitalize="words" /><Field label="Phone number (optional)" placeholder="+263 77 123 4567" value={phone} onChangeText={setPhone} keyboardType="phone-pad" />{error ? <AppText variant="small" color={colors.danger}>{error}</AppText> : null}<View style={styles.actionRow}><SecondaryButton label="Cancel" onPress={() => { setAdding(false); setError(''); }} style={{ flex: 1 }} /><PrimaryButton label="Save customer" onPress={save} style={{ flex: 1 }} /></View></Card> : null}
     <Field label="Search customers" placeholder="Name or phone number" value={search} onChangeText={setSearch} />
     {!selectForCreditSale ? <Card style={styles.summaryCard}><View style={styles.summaryIcon}><CreditCard size={20} stroke={colors.deepPurple} /></View><View style={{ flex: 1 }}><AppText variant="small" color={colors.secondary}>TOTAL CREDIT OWED</AppText><AppText variant="amount">{formatMoney(customers.reduce((sum, person) => sum + person.balance_cents, 0))}</AppText></View><StatusBadge label={String(customers.filter((person) => person.balance_cents > 0).length) + ' accounts'} tone="amber" /></Card> : null}

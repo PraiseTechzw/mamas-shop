@@ -294,6 +294,7 @@ export function CheckoutScreen() {
   const clear = useCart((state) => state.clear);
   const [customer, setCustomer] = useState<Customer | null>(null);
   const [method, setMethod] = useState<PaymentMethod>("CASH");
+  const [changeDisposition, setChangeDisposition] = useState<"GIVEN" | "OWED">("GIVEN");
   const total = useMemo(
     () =>
       lines.reduce(
@@ -329,8 +330,12 @@ export function CheckoutScreen() {
       setError("Choose a customer for this credit sale.");
       return;
     }
-    if (!creditMode && balance > 0) {
+    if (!customerId && balance > 0) {
       setError("Choose a customer before leaving an amount unpaid.");
+      return;
+    }
+    if (changeDisposition === "OWED" && changeCents > 0 && !customerId) {
+      setError("Choose the customer who will collect their change later.");
       return;
     }
     setBusy(true);
@@ -342,6 +347,8 @@ export function CheckoutScreen() {
         })),
         customerId,
         amountPaidCents: paidCents,
+        amountTenderedCents: tenderedCents,
+        changeDueCents: changeDisposition === "OWED" ? changeCents : 0,
         method,
         createdBy: session?.user.id ?? null,
         ownerId,
@@ -356,7 +363,11 @@ export function CheckoutScreen() {
               (customer?.name ?? "the customer account") +
               "."
           : "Receipt " + result.receiptNumber + " is ready." +
-              (changeCents > 0 ? " Give " + formatMoney(changeCents) + " change." : ""),
+              (changeCents > 0
+                ? changeDisposition === "OWED"
+                  ? " " + formatMoney(changeCents) + " change is recorded for " + (customer?.name ?? "the customer") + " to collect later."
+                  : " Give " + formatMoney(changeCents) + " change now."
+                : ""),
       );
       router.replace("/sales/history");
     } catch (value) {
@@ -426,7 +437,7 @@ export function CheckoutScreen() {
           <AppText color={colors.secondary}>Your basket is empty.</AppText>
         ) : null}
       </Card>
-      {creditMode ? (
+      {creditMode || (customerId && (balance > 0 || changeDisposition === "OWED")) ? (
         <Card style={{ gap: 9 }}>
           <AppText variant="heading">Customer account</AppText>
           {customer ? (
@@ -496,12 +507,36 @@ export function CheckoutScreen() {
           </View>
         ) : null}
         {changeCents > 0 ? (
-          <View style={styles.changeBox}>
-            <AppText variant="label" color={colors.success}>Change to give</AppText>
-            <AppText variant="amount" color={colors.success}>{formatMoney(changeCents)}</AppText>
+          <View style={styles.changeSection}>
+            <View style={styles.changeAmountRow}>
+              <AppText variant="label" color={colors.success}>Change due</AppText>
+              <AppText variant="amount" color={colors.success}>{formatMoney(changeCents)}</AppText>
+            </View>
+            <View style={styles.changeOptions}>
+              <Pressable accessibilityRole="radio" accessibilityState={{ checked: changeDisposition === "GIVEN" }} onPress={() => setChangeDisposition("GIVEN")} style={[styles.changeOption, changeDisposition === "GIVEN" && styles.changeOptionSelected]}>
+                <Check size={15} stroke={changeDisposition === "GIVEN" ? colors.success : colors.secondary} />
+                <AppText variant="small" color={changeDisposition === "GIVEN" ? colors.success : colors.secondary}>Give now</AppText>
+              </Pressable>
+              <Pressable accessibilityRole="radio" accessibilityState={{ checked: changeDisposition === "OWED" }} onPress={() => setChangeDisposition("OWED")} style={[styles.changeOption, changeDisposition === "OWED" && styles.changeOptionOwed]}>
+                <AppText variant="small" color={changeDisposition === "OWED" ? colors.warning : colors.secondary}>Collect later</AppText>
+              </Pressable>
+            </View>
+            {changeDisposition === "OWED" ? (
+              customerId ? (
+                <View style={styles.changeCustomer}>
+                  <AppText variant="small" color={colors.secondary}>Customer collecting change</AppText>
+                  <AppText variant="label">{customer?.name ?? "Loading customer…"}</AppText>
+                </View>
+              ) : (
+                <Pressable accessibilityRole="button" style={styles.linkCustomerButton} onPress={() => router.push({ pathname: "/credit/new-credit-sale", params: { preserveCart: "true", purpose: "change" } })}>
+                  <AppText variant="label" color={colors.deepPurple}>Choose who will collect it</AppText>
+                  <ChevronRight size={18} stroke={colors.deepPurple} />
+                </Pressable>
+              )
+            ) : null}
           </View>
         ) : null}
-        {!creditMode && balance > 0 ? (
+        {!customerId && balance > 0 ? (
           <Pressable
             accessibilityRole="button"
             style={styles.linkCustomerButton}
@@ -521,10 +556,10 @@ export function CheckoutScreen() {
       ) : null}
       </ScrollView>
       <PrimaryButton
-        label="Save sale"
+        label={changeCents > 0 ? changeDisposition === "OWED" ? `Record change owed · ${formatMoney(changeCents)}` : `Complete sale · give ${formatMoney(changeCents)}` : "Complete sale"}
         loading={busy}
         onPress={completeSale}
-        disabled={!lines.length || (balance > 0 && (!creditMode || !customerId))}
+        disabled={!lines.length || (balance > 0 && !customerId) || (changeDisposition === "OWED" && changeCents > 0 && !customerId)}
         icon={<Check size={19} stroke="#fff" />}
       />
     </Page>
@@ -645,8 +680,8 @@ const styles = StyleSheet.create({
   checkoutScroller: { flex: 1 },
   checkoutContent: { gap: 14, paddingBottom: 12 },
   checkoutCard: { gap: 11, padding: 14, borderRadius: 18, borderColor: "#D4D7E3", backgroundColor: "#FFFFFF", shadowColor: "#25305A", shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.07, shadowRadius: 8, elevation: 2 },
-  checkoutProductArt: { width: 38, height: 42, borderRadius: 9, backgroundColor: "#F1EFFB", alignItems: "center", justifyContent: "center", overflow: "hidden" },
-  checkoutProductImage: { width: 34, height: 38 },
+  checkoutProductArt: { width: 68, height: 50, borderRadius: 9, backgroundColor: "#FFFFFF", alignItems: "center", justifyContent: "center", overflow: "hidden" },
+  checkoutProductImage: { width: 66, height: 48 },
   salesPage: { flex: 1 },
   salesScroller: { flex: 1 },
   salesScrollContent: { gap: 14, paddingBottom: 16 },
@@ -780,7 +815,13 @@ const styles = StyleSheet.create({
     padding: 12,
     gap: 12,
   },
-  changeBox: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", backgroundColor: "#E7F5EF", borderColor: "#CDE9DC", borderWidth: 1, borderRadius: 13, padding: 12 },
+  changeSection: { gap: 9, backgroundColor: "#E7F5EF", borderColor: "#CDE9DC", borderWidth: 1, borderRadius: 14, padding: 11 },
+  changeAmountRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
+  changeOptions: { flexDirection: "row", gap: 8 },
+  changeOption: { minHeight: 38, flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 5, borderWidth: 1, borderColor: "#CDE9DC", borderRadius: 11, backgroundColor: "#FFFFFF", paddingHorizontal: 8 },
+  changeOptionSelected: { backgroundColor: "#FFFFFF", borderColor: colors.success },
+  changeOptionOwed: { backgroundColor: "#FFF9E9", borderColor: colors.warning },
+  changeCustomer: { gap: 3, padding: 10, borderRadius: 11, backgroundColor: "#FFFFFF" },
   linkCustomerButton: { minHeight: 48, flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingHorizontal: 13, borderRadius: 13, borderWidth: 1, borderColor: "#CFC5F2", backgroundColor: "#F7F5FF" },
   errorBox: { padding: 12, borderRadius: 12, backgroundColor: "#FCEBED" },
   historyRow: {
