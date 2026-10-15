@@ -1,11 +1,13 @@
 import { Alert, Pressable, StyleSheet, View } from 'react-native';
 import { router } from 'expo-router';
-import { LogOut, ReceiptText, Users, ChevronRight, Settings, ChartNoAxesCombined } from 'lucide-react-native';
+import { LogOut, ReceiptText, Users, ChevronRight, Settings, ChartNoAxesCombined, Package, Wallet } from 'lucide-react-native';
 import { Page, Card, AppText } from '@/components/ui/primitives';
 import { colors } from '@/constants/theme';
 import { supabase } from '@/lib/supabase';
 
 const links = [
+  { title: 'Inventory', subtitle: 'Products, stock receiving, and adjustments', icon: Package, path: '/(tabs)/inventory' },
+  { title: 'Expenses', subtitle: 'Record rent, transport, and shop costs', icon: Wallet, path: '/expenses' },
   { title: 'Credit customers', subtitle: 'Balances, payments and account history', icon: Users, path: '/credit/customers' },
   { title: 'Sales history', subtitle: 'Review receipts and payment status', icon: ReceiptText, path: '/sales/history' },
   { title: 'Reports', subtitle: 'Sales and business summaries', icon: ChartNoAxesCombined, path: '/reports' },

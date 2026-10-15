@@ -1,5 +1,2 @@
-import { RoutePlaceholder } from '@/components/layout/route-placeholder';
-
-export default function Screen() {
-  return <RoutePlaceholder title='Locations' />;
-}
+import { LocationsScreen } from '@/features/settings/settings-screens';
+export default LocationsScreen;

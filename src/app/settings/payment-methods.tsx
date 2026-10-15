@@ -1,5 +1,2 @@
-import { RoutePlaceholder } from '@/components/layout/route-placeholder';
-
-export default function Screen() {
-  return <RoutePlaceholder title='Payment methods' />;
-}
+import { PaymentMethodsScreen } from '@/features/settings/settings-screens';
+export default PaymentMethodsScreen;

@@ -1,5 +1,2 @@
-import { RoutePlaceholder } from '@/components/layout/route-placeholder';
-
-export default function Screen() {
-  return <RoutePlaceholder title='Add expense' />;
-}
+import { AddExpenseScreen } from '@/features/expenses/expense-screens';
+export default AddExpenseScreen;

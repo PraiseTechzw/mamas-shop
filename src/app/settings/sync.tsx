@@ -1,5 +1,2 @@
-import { RoutePlaceholder } from '@/components/layout/route-placeholder';
-
-export default function Screen() {
-  return <RoutePlaceholder title='Sync settings' />;
-}
+import { SyncSettingsScreen } from '@/features/settings/settings-screens';
+export default SyncSettingsScreen;

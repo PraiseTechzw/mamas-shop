@@ -1,5 +1,2 @@
-import { RoutePlaceholder } from '@/components/layout/route-placeholder';
-
-export default function Screen() {
-  return <RoutePlaceholder title='Inventory history' />;
-}
+import { StockHistoryScreen } from '@/features/inventory/inventory-screens';
+export default StockHistoryScreen;

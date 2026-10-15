@@ -1,5 +1,2 @@
-import { RoutePlaceholder } from '@/components/layout/route-placeholder';
-
-export default function Screen() {
-  return <RoutePlaceholder title='Notifications' />;
-}
+import { NotificationsSettingsScreen } from '@/features/settings/settings-screens';
+export default NotificationsSettingsScreen;

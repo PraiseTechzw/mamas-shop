@@ -1,0 +1,10 @@
+import type { SQLiteDatabase } from 'expo-sqlite';
+import type { InventoryLocation } from '@/db/schema';
+export type ShopSettings = { shop_name: string; currency: string; low_stock_alerts: number };
+export async function getShopSettings(db: SQLiteDatabase, ownerId: string) { return (await db.getFirstAsync<ShopSettings>('SELECT shop_name, currency, low_stock_alerts FROM shop_settings WHERE owner_id = ?', ownerId)) ?? { shop_name: '', currency: 'USD', low_stock_alerts: 1 }; }
+export async function saveShopSettings(db: SQLiteDatabase, ownerId: string, name: string, currency: string, alerts: boolean) {
+ await db.runAsync('INSERT INTO shop_settings (owner_id, shop_name, currency, low_stock_alerts, updated_at) VALUES (?, ?, ?, ?, ?) ON CONFLICT(owner_id) DO UPDATE SET shop_name = excluded.shop_name, currency = excluded.currency, low_stock_alerts = excluded.low_stock_alerts, updated_at = excluded.updated_at', ownerId, name.trim(), currency, alerts ? 1 : 0, new Date().toISOString());
+}
+export async function listAuditLog(db: SQLiteDatabase, ownerId: string) { return db.getAllAsync<{ id: string; action: string; entity_type: string; description: string; created_at: string }>('SELECT id, action, entity_type, description, created_at FROM audit_log WHERE owner_id = ? ORDER BY created_at DESC LIMIT 100', ownerId); }
+export async function getSyncSummary(db: SQLiteDatabase, ownerId: string) { return db.getFirstAsync<{ pending: number; failed: number }>('SELECT COUNT(*) AS pending, SUM(CASE WHEN last_error IS NOT NULL THEN 1 ELSE 0 END) AS failed FROM sync_outbox WHERE owner_id = ?', ownerId); }
+export async function listLocationBalances(db: SQLiteDatabase, ownerId: string) { return db.getAllAsync<InventoryLocation & { products: number; units: number }>(`SELECT l.id, l.name, l.is_primary, COUNT(b.product_id) AS products, COALESCE(SUM(b.quantity), 0) AS units FROM inventory_locations l LEFT JOIN inventory_balances b ON b.location_id = l.id AND b.owner_id = l.owner_id WHERE l.owner_id = ? GROUP BY l.id ORDER BY l.is_primary DESC, l.name`, ownerId); }

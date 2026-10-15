@@ -1,5 +1,2 @@
-import { RoutePlaceholder } from '@/components/layout/route-placeholder';
-
-export default function Screen() {
-  return <RoutePlaceholder title='Team settings' />;
-}
+import { TeamSettingsScreen } from '@/features/settings/settings-screens';
+export default TeamSettingsScreen;

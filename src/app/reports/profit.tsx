@@ -1,5 +1,2 @@
-import { RoutePlaceholder } from '@/components/layout/route-placeholder';
-
-export default function Screen() {
-  return <RoutePlaceholder title='Profit report' />;
-}
+import { ProfitReportScreen } from '@/features/reports/report-screens';
+export default ProfitReportScreen;

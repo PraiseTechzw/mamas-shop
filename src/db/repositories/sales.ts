@@ -2,6 +2,7 @@ import type { SQLiteDatabase } from 'expo-sqlite';
 import * as Crypto from 'expo-crypto';
 import type { PaymentMethod, Product, SaleSummary } from '@/db/schema';
 import { enqueueChange } from './outbox';
+import { ensurePrimaryLocation } from './inventory';
 
 export async function listProductsForSale(db: SQLiteDatabase, ownerId: string, search = ''): Promise<Product[]> {
   const pattern = '%' + search.trim() + '%';
@@ -37,7 +38,7 @@ export async function recordSale(db: SQLiteDatabase, input: RecordSaleInput) {
   const saleId = Crypto.randomUUID();
   const receiptNumber = 'MS-' + new Date().toISOString().replace(/[-:TZ.]/g, '').slice(2, 12) + '-' + saleId.slice(0, 4).toUpperCase();
   const now = new Date().toISOString();
-  const lines: { id: string; productId: string; name: string; quantity: number; unitPrice: number; lineTotal: number }[] = [];
+  const lines: { id: string; productId: string; name: string; quantity: number; unitPrice: number; lineTotal: number; unitCost: number }[] = [];
   let totalCents = 0;
 
   for (const item of input.items) {
@@ -46,7 +47,7 @@ export async function recordSale(db: SQLiteDatabase, input: RecordSaleInput) {
     if (!product) throw new Error('A product in this sale is no longer available.');
     if (item.quantity > product.stock_quantity) throw new Error('There is not enough ' + product.name + ' in stock.');
     const lineTotal = Math.round(product.price_cents * item.quantity);
-    lines.push({ id: Crypto.randomUUID(), productId: product.id, name: product.name, quantity: item.quantity, unitPrice: product.price_cents, lineTotal });
+    lines.push({ id: Crypto.randomUUID(), productId: product.id, name: product.name, quantity: item.quantity, unitPrice: product.price_cents, lineTotal, unitCost: product.cost_cents ?? 0 });
     totalCents += lineTotal;
   }
 
@@ -57,6 +58,7 @@ export async function recordSale(db: SQLiteDatabase, input: RecordSaleInput) {
   const outboxPayload = { id: saleId, receipt_number: receiptNumber, customer_id: input.customerId, total_cents: totalCents, paid_cents: input.amountPaidCents, balance_cents: balanceCents, status, created_at: now, items: lines };
 
   await db.withTransactionAsync(async () => {
+    await ensurePrimaryLocation(db, input.ownerId);
     if (input.customerId) {
       const customer = await db.getFirstAsync<{ id: string }>('SELECT id FROM customers WHERE id = ? AND owner_id = ?', input.customerId, input.ownerId);
       if (!customer) throw new Error('Choose a customer from this shop before recording credit.');
@@ -65,7 +67,17 @@ export async function recordSale(db: SQLiteDatabase, input: RecordSaleInput) {
     for (const line of lines) {
       const changed = await db.runAsync('UPDATE products SET stock_quantity = stock_quantity - ?, updated_at = ? WHERE id = ? AND owner_id = ? AND stock_quantity >= ?', line.quantity, now, line.productId, input.ownerId, line.quantity);
       if (changed.changes !== 1) throw new Error('Stock changed while completing this sale. Please review the cart and try again.');
-      await db.runAsync('INSERT INTO sale_items (id, sale_id, product_id, product_name, quantity, unit_price_cents, line_total_cents) VALUES (?, ?, ?, ?, ?, ?, ?)', line.id, saleId, line.productId, line.name, line.quantity, line.unitPrice, line.lineTotal);
+      await db.runAsync('INSERT INTO sale_items (id, sale_id, product_id, product_name, quantity, unit_price_cents, line_total_cents, unit_cost_cents) VALUES (?, ?, ?, ?, ?, ?, ?, ?)', line.id, saleId, line.productId, line.name, line.quantity, line.unitPrice, line.lineTotal, line.unitCost);
+      let remaining = line.quantity;
+      const balances = await db.getAllAsync<{ location_id: string; quantity: number }>('SELECT b.location_id, b.quantity FROM inventory_balances b JOIN inventory_locations l ON l.id = b.location_id WHERE b.owner_id = ? AND b.product_id = ? AND b.quantity > 0 ORDER BY l.is_primary DESC, l.created_at', input.ownerId, line.productId);
+      for (const balance of balances) {
+        if (remaining <= 0) break;
+        const taken = Math.min(balance.quantity, remaining);
+        await db.runAsync('UPDATE inventory_balances SET quantity = quantity - ?, updated_at = ? WHERE owner_id = ? AND product_id = ? AND location_id = ? AND quantity >= ?', taken, now, input.ownerId, line.productId, balance.location_id, taken);
+        await db.runAsync(`INSERT INTO stock_movements (id, owner_id, product_id, movement_type, quantity, from_location_id, unit_cost_cents, note, created_at) VALUES (?, ?, ?, 'SALE', ?, ?, ?, ?, ?)`, Crypto.randomUUID(), input.ownerId, line.productId, taken, balance.location_id, line.unitCost, 'Sale ' + receiptNumber, now);
+        remaining -= taken;
+      }
+      if (remaining > 0) throw new Error('Available stock locations changed while completing this sale. Please review the cart and try again.');
     }
     if (input.customerId) {
       await db.runAsync('INSERT INTO account_entries (id, owner_id, customer_id, sale_id, entry_type, amount_cents, note, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)', Crypto.randomUUID(), input.ownerId, input.customerId, saleId, 'SALE_CHARGE', totalCents, 'Sale ' + receiptNumber, now);

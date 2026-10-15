@@ -1,9 +1,11 @@
 import { currencyCode } from '@/constants/theme';
 
-const money = new Intl.NumberFormat('en-US', { style: 'currency', currency: currencyCode });
+let activeCurrency = currencyCode;
+export function setAppCurrency(code: string) { if (['USD', 'ZWL', 'ZAR', 'BWP'].includes(code)) activeCurrency = code; }
+function moneyFormatter() { return new Intl.NumberFormat('en-US', { style: 'currency', currency: activeCurrency }); }
 
 export function formatMoney(cents: number) {
-  return money.format((Number.isFinite(cents) ? cents : 0) / 100);
+  return moneyFormatter().format((Number.isFinite(cents) ? cents : 0) / 100);
 }
 
 export function formatDateTime(value: string) {

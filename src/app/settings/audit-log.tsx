@@ -1,5 +1,2 @@
-import { RoutePlaceholder } from '@/components/layout/route-placeholder';
-
-export default function Screen() {
-  return <RoutePlaceholder title='Audit log' />;
-}
+import { AuditLogScreen } from '@/features/settings/settings-screens';
+export default AuditLogScreen;
