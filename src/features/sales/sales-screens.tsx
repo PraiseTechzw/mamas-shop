@@ -3,14 +3,14 @@ import { Alert, Image, Pressable, RefreshControl, ScrollView, StyleSheet, View }
 import { router } from 'expo-router';
 import { useSQLiteContext } from 'expo-sqlite';
 import { useAuth } from '@/features/auth/auth-context';
-import { colors, radius } from '@/constants/theme';
+import { colors } from '@/constants/theme';
 import { formatDateTime, formatMoney, toCents } from '@/lib/format';
 import { listProductsForSale, listRecentSales, recordSale } from '@/db/repositories/sales';
 import { getCustomer } from '@/db/repositories/customers';
 import type { Customer, PaymentMethod, Product, SaleSummary } from '@/db/schema';
 import { useCart } from '@/stores/cart';
 import { AppText, Card, Field, Page, PrimaryButton, SectionTitle, StatusBadge } from '@/components/ui/primitives';
-import { Banknote, Check, ChevronRight, CreditCard, Minus, Plus, ReceiptText, Search, Smartphone } from 'lucide-react-native';
+import { Banknote, Check, CreditCard, Minus, Plus, ReceiptText, Search, Smartphone } from 'lucide-react-native';
 
 const emptyArt = require('@/assets/images/empty-states/no-items.png');
 
@@ -23,7 +23,6 @@ export function SalesScreen() {
   const lines = useCart((state) => state.lines);
   const creditMode = useCart((state) => state.creditMode);
   const addProduct = useCart((state) => state.addProduct);
-  const changeQuantity = useCart((state) => state.changeQuantity);
   const total = lines.reduce((sum, item) => sum + Math.round(item.priceCents * item.quantity), 0);
   useEffect(() => { let active = true; void listProductsForSale(db, ownerId, search).then((data) => { if (active) setRows(data); }); return () => { active = false; }; }, [db, ownerId, search]);
   return <Page title={creditMode ? 'New credit sale' : 'Quick sale'} subtitle={creditMode ? 'Choose products for this customer account.' : 'Tap a product to add it to the sale.'} right={<Pressable onPress={() => router.push('/sales/history')} hitSlop={8}><ReceiptText size={21} stroke={colors.purple} /></Pressable>}>
@@ -37,7 +36,7 @@ export function SalesScreen() {
   </Page>;
 }
 
-const methods: Array<{ key: PaymentMethod; title: string; detail: string; icon: React.ReactNode }> = [
+const methods: { key: PaymentMethod; title: string; detail: string; icon: React.ReactNode }[] = [
   { key: 'CASH', title: 'Cash', detail: 'Paid in person', icon: <Banknote size={19} stroke={colors.success} /> },
   { key: 'ECOCASH', title: 'EcoCash', detail: 'Mobile money', icon: <Smartphone size={19} stroke={colors.info} /> },
   { key: 'CARD', title: 'Card / Other', detail: 'Other payment', icon: <CreditCard size={19} stroke={colors.purple} /> },
@@ -57,7 +56,9 @@ export function CheckoutScreen() {
   const [paidAmount, setPaidAmount] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
+  // eslint-disable-next-line react-hooks/set-state-in-effect -- keep the suggested payment amount in sync with the cart total.
   useEffect(() => { setPaidAmount((total / 100).toFixed(2)); }, [total]);
+  // eslint-disable-next-line react-hooks/set-state-in-effect -- resolve the selected account from local SQLite.
   useEffect(() => { if (customerId) void getCustomer(db, ownerId, customerId).then(setCustomer); else setCustomer(null); }, [db, ownerId, customerId]);
   const paidCents = toCents(paidAmount);
   const balance = Math.max(0, total - paidCents);
@@ -91,6 +92,7 @@ export function SalesHistoryScreen() {
   const [sales, setSales] = useState<SaleSummary[]>([]);
   const [refreshing, setRefreshing] = useState(false);
   const load = async () => { setRefreshing(true); try { setSales(await listRecentSales(db, ownerId)); } finally { setRefreshing(false); } };
+  // eslint-disable-next-line react-hooks/set-state-in-effect, react-hooks/exhaustive-deps -- load local SQLite sales when the account scope changes.
   useEffect(() => { void load(); }, [db, ownerId]);
   return <Page title="Sales history" subtitle="Every sale recorded on this device." back scroll={false}><ScrollView refreshControl={<RefreshControl refreshing={refreshing} onRefresh={load} tintColor={colors.purple} />} contentContainerStyle={{ gap: 10, paddingBottom: 24 }}>
     {sales.map((sale) => <Pressable key={sale.id} onPress={() => Alert.alert('Receipt ' + sale.receipt_number, (sale.customer_name || 'Walk-in customer') + '\n' + formatDateTime(sale.created_at) + '\nPaid ' + formatMoney(sale.paid_cents) + (sale.balance_cents ? '\nOwed ' + formatMoney(sale.balance_cents) : ''))}><Card style={styles.historyRow}><View style={styles.receiptIcon}><ReceiptText stroke={colors.purple} size={18} /></View><View style={{ flex: 1 }}><AppText variant="label">{sale.customer_name || 'Walk-in customer'}</AppText><AppText variant="small" color={colors.secondary} style={{ marginTop: 3 }}>{sale.receipt_number} · {formatDateTime(sale.created_at)}</AppText></View><View style={{ alignItems: 'flex-end', gap: 6 }}><AppText variant="label">{formatMoney(sale.total_cents)}</AppText><StatusBadge label={sale.status === 'PAID' ? 'Paid' : sale.status === 'PARTIAL' ? 'Part paid' : 'On credit'} tone={sale.status === 'PAID' ? 'green' : 'amber'} /></View></Card></Pressable>)}

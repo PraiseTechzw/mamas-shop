@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Alert, Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import { Alert, Pressable, StyleSheet, View } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useSQLiteContext } from 'expo-sqlite';
 import { ArrowDownLeft, ArrowUpRight, ChevronRight, CreditCard, Plus, Users } from 'lucide-react-native';
@@ -26,6 +26,7 @@ function CustomerList({ selectForCreditSale = false }: { selectForCreditSale?: b
   const [search, setSearch] = useState('');
   const [error, setError] = useState('');
   const load = async () => setCustomers(await listCustomers(db, ownerId));
+  // eslint-disable-next-line react-hooks/set-state-in-effect, react-hooks/exhaustive-deps -- load local SQLite records when the account scope changes.
   useEffect(() => { void load(); }, [db, ownerId]);
   const save = async () => { setError(''); try { await createCustomer(db, ownerId, name, phone); setName(''); setPhone(''); setAdding(false); await load(); } catch (value) { setError(value instanceof Error ? value.message : 'Could not save this customer.'); } };
   const filtered = customers.filter((customer) => (customer.name + ' ' + (customer.phone ?? '')).toLowerCase().includes(search.toLowerCase()));
@@ -51,6 +52,7 @@ export function CustomerAccountScreen() {
   const [customer, setCustomer] = useState<Customer | null>(null);
   const [entries, setEntries] = useState<AccountEntry[]>([]);
   const load = async () => { if (!customerId) return; const [person, history] = await Promise.all([getCustomer(db, ownerId, customerId), listAccountEntries(db, ownerId, customerId)]); setCustomer(person); setEntries(history); };
+  // eslint-disable-next-line react-hooks/set-state-in-effect, react-hooks/exhaustive-deps -- load the selected customer ledger from local SQLite.
   useEffect(() => { void load(); }, [db, ownerId, customerId]);
   if (!customer) return <Page title="Customer account" back><Card><AppText color={colors.secondary}>Loading customer account…</AppText></Card></Page>;
   const charged = entries.filter((entry) => entry.entry_type === 'SALE_CHARGE').reduce((sum, entry) => sum + entry.amount_cents, 0);

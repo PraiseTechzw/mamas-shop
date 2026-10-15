@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import type { PaymentMethod, Product } from '@/db/schema';
+import type { Product } from '@/db/schema';
 
 type CartLine = { productId: string; name: string; unit: string; priceCents: number; quantity: number; stockQuantity: number };
 type CartState = {

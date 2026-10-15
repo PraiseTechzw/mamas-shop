@@ -1,8 +1,8 @@
 import { useState } from 'react';
-import { Image, ImageBackground, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import { Image, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { router } from 'expo-router';
-import { Mail, LockKeyhole, Eye, EyeOff, ArrowRight } from 'lucide-react-native';
-import { colors, radius } from '@/constants/theme';
+import { Eye, EyeOff, ArrowRight } from 'lucide-react-native';
+import { colors } from '@/constants/theme';
 import { AppText, Card, Field, PrimaryButton, SecondaryButton } from '@/components/ui/primitives';
 import { useAuth } from './auth-context';
 import { supabase } from '@/lib/supabase';

@@ -1,5 +1,5 @@
 import { Redirect, Tabs } from 'expo-router';
-import { CreditCard, Ellipsis, House, Package, ReceiptText, Users } from 'lucide-react-native';
+import { Ellipsis, House, Package, ReceiptText, Users } from 'lucide-react-native';
 import { colors } from '@/constants/theme';
 import { useAuth } from '@/features/auth/auth-context';
 import { LoadingScreen } from '@/components/ui/primitives';

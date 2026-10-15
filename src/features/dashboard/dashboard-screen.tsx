@@ -8,7 +8,7 @@ import { formatMoney, formatDateTime } from '@/lib/format';
 import { getDashboardData, type DashboardData } from '@/db/repositories/dashboard';
 import { useAuth } from '@/features/auth/auth-context';
 import { useCart } from '@/stores/cart';
-import { AppText, Card, PrimaryButton, SectionTitle, StatusBadge } from '@/components/ui/primitives';
+import { AppText, Card, PrimaryButton, SectionTitle } from '@/components/ui/primitives';
 
 const emptyArt = require('@/assets/images/empty-states/no-items.png');
 const emptyData: DashboardData = { salesTodayCents: 0, paymentsTodayCents: 0, creditOutstandingCents: 0, activeCustomers: 0, lowStockCount: 0, recentSales: [], weeklySales: [] };
@@ -21,6 +21,7 @@ export function DashboardScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const firstName = String(session?.user.user_metadata?.full_name ?? session?.user.email?.split('@')[0] ?? 'there').split(' ')[0];
   const load = useCallback(async () => { setRefreshing(true); try { setData(await getDashboardData(db, session?.user.id ?? '')); } finally { setRefreshing(false); } }, [db, session?.user.id]);
+  // eslint-disable-next-line react-hooks/set-state-in-effect -- refresh dashboard totals from local SQLite on screen entry.
   useEffect(() => { void load(); }, [load]);
   const startSale = () => { clearCart(); router.push('/sales/new'); };
   const max = Math.max(1, ...data.weeklySales.map((day) => day.totalCents));

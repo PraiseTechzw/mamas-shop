@@ -8,7 +8,7 @@ export type DashboardData = {
   activeCustomers: number;
   lowStockCount: number;
   recentSales: SaleSummary[];
-  weeklySales: Array<{ label: string; totalCents: number }>;
+  weeklySales: { label: string; totalCents: number }[];
 };
 
 export async function getDashboardData(db: SQLiteDatabase, ownerId: string): Promise<DashboardData> {

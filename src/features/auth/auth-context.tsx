@@ -7,9 +7,9 @@ const AuthContext = createContext<AuthContextValue>({ session: null, loading: tr
 
 export function AuthProvider({ children }: PropsWithChildren) {
   const [session, setSession] = useState<Session | null>(null);
-  const [loading, setLoading] = useState(hasSupabaseConfig);
+  const [loading, setLoading] = useState(Boolean(supabase));
   useEffect(() => {
-    if (!supabase) { setLoading(false); return; }
+    if (!supabase) return;
     let active = true;
     supabase.auth.getSession().then(({ data }) => { if (active) { setSession(data.session); setLoading(false); } }).catch(() => { if (active) setLoading(false); });
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, nextSession) => setSession(nextSession));

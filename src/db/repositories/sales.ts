@@ -37,7 +37,7 @@ export async function recordSale(db: SQLiteDatabase, input: RecordSaleInput) {
   const saleId = Crypto.randomUUID();
   const receiptNumber = 'MS-' + new Date().toISOString().replace(/[-:TZ.]/g, '').slice(2, 12) + '-' + saleId.slice(0, 4).toUpperCase();
   const now = new Date().toISOString();
-  const lines: Array<{ id: string; productId: string; name: string; quantity: number; unitPrice: number; lineTotal: number }> = [];
+  const lines: { id: string; productId: string; name: string; quantity: number; unitPrice: number; lineTotal: number }[] = [];
   let totalCents = 0;
 
   for (const item of input.items) {
