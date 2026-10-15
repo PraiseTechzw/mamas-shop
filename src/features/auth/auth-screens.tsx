@@ -219,6 +219,9 @@ export function LoginScreen() {
             <AppText variant="label" color={colors.purple}>{creating ? 'Log in' : 'Create one'}</AppText>
           </Pressable>
         </View>
+        <Pressable accessibilityRole="button" onPress={() => router.push('/(auth)/join-business')} style={{ alignSelf: 'center', paddingVertical: 8 }}>
+          <AppText variant="label" color={colors.purple}>Have an invitation code? Join a business</AppText>
+        </Pressable>
         <ZimbabweFooter />
       </ScrollView>
     </KeyboardAvoidingView>

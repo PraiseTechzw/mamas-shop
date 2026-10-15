@@ -1,5 +1,6 @@
 import type { SQLiteDatabase } from 'expo-sqlite';
 import { supabase } from '@/lib/supabase';
+import { syncOutbox } from '@/services/sync-engine';
 
 export async function persistBusinessScope(db: SQLiteDatabase, userId: string, businessId: string) {
   await db.runAsync('INSERT INTO business_scopes (user_id, business_id, updated_at) VALUES (?, ?, ?) ON CONFLICT(user_id) DO UPDATE SET business_id = excluded.business_id, updated_at = excluded.updated_at', userId, businessId, new Date().toISOString());
@@ -22,15 +23,18 @@ export async function joinBusiness(db: SQLiteDatabase, userId: string, code: str
   if (!supabase) throw new Error('Connect this app to Supabase before accepting an invitation.');
   const cleanCode = code.trim().toLowerCase();
   if (cleanCode.length < 32) throw new Error('Enter the full invitation code from the shop owner.');
-  if (cleanCode === userId.toLowerCase()) throw new Error('That invitation code is invalid.');
 
   const personalRecords = await db.getFirstAsync<{ count: number }>(`
     SELECT
       (SELECT COUNT(*) FROM products WHERE owner_id = ?) +
       (SELECT COUNT(*) FROM sales WHERE owner_id = ?) +
       (SELECT COUNT(*) FROM customers WHERE owner_id = ?) +
-      (SELECT COUNT(*) FROM expenses WHERE owner_id = ?) AS count
-  `, userId, userId, userId, userId);
+      (SELECT COUNT(*) FROM expenses WHERE owner_id = ?) +
+      (SELECT COUNT(*) FROM inventory_locations WHERE owner_id = ?) +
+      (SELECT COUNT(*) FROM stock_movements WHERE owner_id = ?) +
+      (SELECT COUNT(*) FROM payments WHERE owner_id = ?) +
+      (SELECT COUNT(*) FROM account_entries WHERE owner_id = ?) AS count
+  `, userId, userId, userId, userId, userId, userId, userId, userId);
   if ((personalRecords?.count ?? 0) > 0) throw new Error('This login already has shop records. Use a new staff login so its existing business data stays separate.');
   const pending = await db.getFirstAsync<{ count: number }>('SELECT COUNT(*) AS count FROM sync_outbox WHERE owner_id = ?', userId);
   if ((pending?.count ?? 0) > 0) throw new Error('Sync this login’s pending changes before joining another business.');
@@ -41,5 +45,8 @@ export async function joinBusiness(db: SQLiteDatabase, userId: string, code: str
   if (!row?.owner_id) throw new Error('The invitation could not be accepted.');
   const businessId = String(row.owner_id);
   await persistBusinessScope(db, userId, businessId);
+  // Load the shop's event archive before the app opens its business screens.
+  // The owner-scoped RLS policy permits this only after the membership RPC succeeds.
+  await syncOutbox(db, businessId, true);
   return { businessId, businessName: String(row.business_name ?? 'Shop') };
 }

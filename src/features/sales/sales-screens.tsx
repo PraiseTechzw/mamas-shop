@@ -45,7 +45,7 @@ import {
   Users,
 } from "lucide-react-native";
 import { ensurePrimaryLocation, listLocations } from "@/db/repositories/inventory";
-import { ensureOwnerSeller, listSellers } from "@/db/repositories/sellers";
+import { ensureOwnerSeller, ensureUserSeller, listSellers } from "@/db/repositories/sellers";
 import { useSyncStatus } from "@/features/sync/sync-context";
 import { useEffect, useMemo, useState } from "react";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -96,16 +96,21 @@ export function SalesScreen() {
   useEffect(() => {
     let active = true;
     const ownerName = String(session?.user.user_metadata?.full_name ?? session?.user.email?.split("@")[0] ?? "Shop owner");
-    void Promise.all([ensurePrimaryLocation(db, ownerId), ensureOwnerSeller(db, ownerId, ownerName)]).then(async ([primary, ownerSeller]) => {
+    void (async () => {
+      const isOwner = Boolean(session && businessId === session.user.id);
+      const primary = isOwner ? await ensurePrimaryLocation(db, ownerId) : null;
+      const currentSeller = isOwner
+        ? await ensureOwnerSeller(db, ownerId, ownerName)
+        : session ? await ensureUserSeller(db, ownerId, session.user.id, ownerName) : null;
       const [locationRows, sellerRows] = await Promise.all([listLocations(db, ownerId), listSellers(db, ownerId)]);
       if (!active) return;
       setLocations(locationRows);
       setSellers(sellerRows);
-      if (!locationRows.some((location) => location.id === locationId)) setLocationId(primary.id);
-      if (!sellerRows.some((seller) => seller.id === sellerId)) setSellerId(ownerSeller.id);
-    });
+      if (!locationRows.some((location) => location.id === locationId)) setLocationId(primary?.id ?? locationRows[0]?.id ?? null);
+      if (!sellerRows.some((seller) => seller.id === sellerId)) setSellerId(currentSeller?.id ?? null);
+    })().catch(() => {});
     return () => { active = false; };
-  }, [db, ownerId, session?.user.email, session?.user.user_metadata?.full_name, locationId, sellerId, setLocationId, setSellerId, revision]);
+  }, [db, ownerId, businessId, session?.user.id, session?.user.email, session?.user.user_metadata?.full_name, locationId, sellerId, setLocationId, setSellerId, revision]);
   useEffect(() => {
     let active = true;
     void listProductsForSale(db, ownerId, search, locationId).then((data) => {
