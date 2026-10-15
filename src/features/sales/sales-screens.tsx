@@ -763,7 +763,7 @@ const styles = StyleSheet.create({
   productArt: {
     width: "100%",
     height: 62,
-    backgroundColor: "#F1EFFB",
+    backgroundColor: "#FFFFFF",
     borderRadius: 13,
     alignItems: "center",
     justifyContent: "center",
