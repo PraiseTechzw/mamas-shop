@@ -1,6 +1,7 @@
 import { useState, type ReactNode } from 'react';
 import { ActivityIndicator, Image, ImageBackground, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import Svg, { Defs, LinearGradient, Path, Rect, Stop } from 'react-native-svg';
 import { router } from 'expo-router';
 import { ArrowLeft, ArrowRight, Eye, EyeOff, Heart, ShieldCheck, Tag, Truck } from 'lucide-react-native';
 import { colors } from '@/constants/theme';
@@ -37,6 +38,34 @@ function ZimbabweFooter() {
   return <View style={styles.country}><AppText style={styles.flag}>🇿🇼</AppText><View style={styles.footerDivider} /><AppText variant="label" color="#0646CE">Proudly Zimbabwean</AppText></View>;
 }
 
+function WelcomeWave() {
+  return <Svg width="100%" height={52} viewBox="0 0 400 42" preserveAspectRatio="none" accessibilityLabel="Blue and yellow brand wave">
+    <Path d="M0 4 C55 31 112 39 198 38 C282 37 345 23 400 0 L400 42 L0 42 Z" fill="#FFC83D" />
+    <Path d="M0 13 C60 38 118 42 200 41 C285 40 348 28 400 8 L400 42 L0 42 Z" fill="#0646CE" />
+  </Svg>;
+}
+
+function StorefrontHero() {
+  return <View style={styles.hero} accessibilityLabel="Sunny Mama’s Shop neighborhood market storefront">
+    <ImageBackground source={welcomeStorefront} resizeMode="cover" style={styles.heroImage} imageStyle={styles.heroImageContent}>
+      <Svg pointerEvents="none" width="100%" height="100%" viewBox="0 0 400 300" preserveAspectRatio="none" style={StyleSheet.absoluteFill}>
+        <Defs>
+          <LinearGradient id="storefrontFadeTop" x1="0" y1="0" x2="0" y2="1">
+            <Stop offset="0" stopColor="#FCFDFF" stopOpacity="1" />
+            <Stop offset="1" stopColor="#FCFDFF" stopOpacity="0" />
+          </LinearGradient>
+          <LinearGradient id="storefrontFadeBottom" x1="0" y1="0" x2="0" y2="1">
+            <Stop offset="0" stopColor="#FCFDFF" stopOpacity="0" />
+            <Stop offset="1" stopColor="#FCFDFF" stopOpacity="1" />
+          </LinearGradient>
+        </Defs>
+        <Rect x="0" y="0" width="400" height="68" fill="url(#storefrontFadeTop)" />
+        <Rect x="0" y="232" width="400" height="68" fill="url(#storefrontFadeBottom)" />
+      </Svg>
+    </ImageBackground>
+  </View>;
+}
+
 function WelcomeBenefits() {
   const benefits = [
     { label: 'Safe &\nSecure', Icon: ShieldCheck, color: '#1764E8' },
@@ -51,18 +80,19 @@ function WelcomeBenefits() {
 }
 
 export function WelcomeScreen() {
-  return <SafeAreaView className="flex-1 bg-canvas" edges={['top', 'bottom']}>
-    <ScrollView className="flex-1 bg-canvas" contentContainerStyle={styles.welcome}>
+  return <SafeAreaView className="flex-1" style={styles.welcomeCanvas} edges={['top', 'bottom']}>
+    <ScrollView className="flex-1" style={styles.welcomeCanvas} contentContainerStyle={styles.welcome}>
       <BrandHeader />
       <AppText variant="small" color="#536B91" style={styles.welcomePromise}>Quality products  •  Fair prices  •{ '\n' }Serving our community</AppText>
       <WelcomeBenefits />
-      <ImageBackground source={welcomeStorefront} resizeMode="cover" style={styles.hero} imageStyle={styles.heroImage} accessibilityLabel="Sunny Mama’s Shop neighborhood market storefront" />
+      <StorefrontHero />
       <View style={styles.welcomeActions}>
         <AuthButton label="Get Started" icon={<ArrowRight size={21} color="#FFFFFF" />} onPress={() => router.push('/(auth)/login')} />
         <AuthButton label="Log In" variant="secondary" onPress={() => router.push('/(auth)/login')} />
       </View>
       <ZimbabweFooter />
     </ScrollView>
+    <View pointerEvents="none" style={styles.waveDock}><WelcomeWave /></View>
   </SafeAreaView>;
 }
 
@@ -160,9 +190,10 @@ export function LoginScreen() {
 }
 
 const styles = StyleSheet.create({
-  welcome: { flexGrow: 1, justifyContent: 'flex-start', paddingHorizontal: 22, paddingTop: 8, paddingBottom: 12, gap: 8 },
+  welcomeCanvas: { backgroundColor: '#FCFDFF' },
+  welcome: { flexGrow: 1, justifyContent: 'flex-start', paddingHorizontal: 22, paddingTop: 8, paddingBottom: 62, gap: 8 },
   brandBlock: { alignItems: 'center', gap: 4, alignSelf: 'stretch' },
-  welcomeLogo: { width: '100%', aspectRatio: 2.34, maxHeight: 142 },
+  welcomeLogo: { width: '80%', aspectRatio: 2.34, maxHeight: 122, alignSelf: 'center' },
   welcomePromise: { textAlign: 'center', fontSize: 13, lineHeight: 19, marginTop: -7 },
   benefits: { flexDirection: 'row', justifyContent: 'space-around', alignItems: 'flex-start', paddingHorizontal: 2, paddingTop: 2, paddingBottom: 3 },
   benefit: { flex: 1, alignItems: 'center', gap: 4 },
@@ -174,9 +205,11 @@ const styles = StyleSheet.create({
   brandName: { fontFamily: 'Poppins-SemiBold', fontSize: 32, lineHeight: 38, color: colors.deepPurple },
   compactBrandName: { fontSize: 26, lineHeight: 32 },
   brandTagline: { fontFamily: 'Inter-Medium', letterSpacing: 0.2, marginTop: 2 },
-  hero: { width: '100%', aspectRatio: 1.5, overflow: 'hidden', alignSelf: 'stretch', backgroundColor: '#D9E9FF' },
-  heroImage: { width: '100%', height: '100%' },
-  welcomeActions: { gap: 9, marginTop: 2 },
+  hero: { aspectRatio: 1.5, overflow: 'hidden', alignSelf: 'stretch', marginHorizontal: -22 },
+  heroImage: { ...StyleSheet.absoluteFill },
+  heroImageContent: { width: '100%', height: '100%' },
+  waveDock: { position: 'absolute', right: 0, bottom: 0, left: 0, height: 52 },
+  welcomeActions: { width: '92%', alignSelf: 'center', gap: 9, marginTop: 18 },
   buttonTouchArea: { width: '100%' },
   authButton: { minHeight: 54, width: '100%', borderRadius: 28, paddingHorizontal: 18, alignItems: 'center', justifyContent: 'center', flexDirection: 'row', gap: 12, borderWidth: 1.5 },
   primaryAction: { backgroundColor: '#0646CE', borderColor: '#0646CE' },
