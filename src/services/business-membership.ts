@@ -47,6 +47,7 @@ export async function joinBusiness(db: SQLiteDatabase, userId: string, code: str
   await persistBusinessScope(db, userId, businessId);
   // Load the shop's event archive before the app opens its business screens.
   // The owner-scoped RLS policy permits this only after the membership RPC succeeds.
-  await syncOutbox(db, businessId, true);
+  const sync = await syncOutbox(db, businessId, true);
+  if (sync.failed > 0) throw new Error('Your membership is active, but shop data could not fully download. Check your connection and submit the same invitation code again to retry.');
   return { businessId, businessName: String(row.business_name ?? 'Shop') };
 }

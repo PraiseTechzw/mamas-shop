@@ -75,6 +75,7 @@ export function SalesScreen() {
   const { session, businessId } = useAuth();
   const { revision } = useSyncStatus();
   const ownerId = businessId ?? session?.user.id ?? "";
+  const isShopOwner = Boolean(session && businessId === session.user.id);
   const [rows, setRows] = useState<Product[]>([]);
   const [productLoadError, setProductLoadError] = useState('');
   const [productRetry, setProductRetry] = useState(0);
@@ -110,7 +111,7 @@ export function SalesScreen() {
       if (!sellerRows.some((seller) => seller.id === sellerId)) setSellerId(currentSeller?.id ?? null);
     })().catch(() => {});
     return () => { active = false; };
-  }, [db, ownerId, businessId, session?.user.id, session?.user.email, session?.user.user_metadata?.full_name, locationId, sellerId, setLocationId, setSellerId, revision]);
+  }, [db, ownerId, businessId, session, session?.user.id, session?.user.email, session?.user.user_metadata?.full_name, locationId, sellerId, setLocationId, setSellerId, revision]);
   useEffect(() => {
     let active = true;
     void listProductsForSale(db, ownerId, search, locationId).then((data) => {
@@ -155,7 +156,7 @@ export function SalesScreen() {
       {productLoadError ? <View style={styles.errorBox}><AppText variant="small" color={colors.danger}>{productLoadError}</AppText><Pressable accessibilityRole="button" onPress={()=>setProductRetry((value)=>value+1)}><AppText variant="label" color={colors.deepPurple}>Retry loading products</AppText></Pressable></View> : null}
       <View style={styles.saleAssignment}>
         <View style={styles.assignmentRow}><View style={styles.assignmentLabel}><MapPin size={15} stroke={colors.deepPurple}/><AppText variant="small" color={colors.secondary}>Location</AppText></View><ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.assignmentChoices}>{locations.map((location)=><Pressable key={location.id} accessibilityRole="button" accessibilityState={{selected:locationId===location.id}} onPress={()=>setLocationId(location.id)} style={[styles.assignmentChip,locationId===location.id&&styles.assignmentChipActive]}><AppText variant="small" color={locationId===location.id?colors.deepPurple:colors.secondary}>{location.name}</AppText></Pressable>)}</ScrollView></View>
-        <View style={styles.assignmentRow}><View style={styles.assignmentLabel}><Users size={15} stroke={colors.deepPurple}/><AppText variant="small" color={colors.secondary}>Seller</AppText></View><ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.assignmentChoices}>{sellers.map((seller)=><Pressable key={seller.id} accessibilityRole="button" accessibilityState={{selected:sellerId===seller.id}} onPress={()=>setSellerId(seller.id)} style={[styles.assignmentChip,sellerId===seller.id&&styles.assignmentChipActive]}><AppText variant="small" color={sellerId===seller.id?colors.deepPurple:colors.secondary}>{seller.name}</AppText></Pressable>)}</ScrollView></View>
+        {isShopOwner?<View style={styles.assignmentRow}><View style={styles.assignmentLabel}><Users size={15} stroke={colors.deepPurple}/><AppText variant="small" color={colors.secondary}>Seller</AppText></View><ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.assignmentChoices}>{sellers.map((seller)=><Pressable key={seller.id} accessibilityRole="button" accessibilityState={{selected:sellerId===seller.id}} onPress={()=>setSellerId(seller.id)} style={[styles.assignmentChip,sellerId===seller.id&&styles.assignmentChipActive]}><AppText variant="small" color={sellerId===seller.id?colors.deepPurple:colors.secondary}>{seller.name}</AppText></Pressable>)}</ScrollView></View>:null}
       </View>
       <Field
         label=""

@@ -28,7 +28,7 @@ export function AuthProvider({ children }: PropsWithChildren) {
   }, []);
   useEffect(() => {
     const userId = session?.user.id;
-    if (!userId) { setBusinessIdState(null); setBusinessLoading(false); return; }
+    if (!userId) return;
     let active = true;
     void (async () => {
       const cached = await db.getFirstAsync<{ business_id: string }>('SELECT business_id FROM business_scopes WHERE user_id = ?', userId).catch(() => null);

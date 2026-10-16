@@ -35,7 +35,7 @@ export default function JoinBusinessScreen() {
       <ViewRow />
       {!session ? <>
         <AppText color={colors.secondary}>Sign in or create an account first. You can return here after signing in and enter the code.</AppText>
-        <PrimaryButton label="Go to sign in" onPress={() => router.replace('/(auth)/login')}/>
+        <PrimaryButton label="Go to sign in" onPress={() => router.replace({ pathname: '/(auth)/login', params: { next: '/(auth)/join-business' } })}/>
       </> : <>
         <AppText variant="small" color={colors.secondary}>Signed in as {session.user.email ?? 'staff account'}</AppText>
         <Field label="Invitation code" value={code} onChangeText={(value) => { setCode(value); setError(''); }} placeholder="Paste the full code" autoCapitalize="none" autoCorrect={false} />

@@ -48,6 +48,7 @@ export async function syncOutbox(db: SQLiteDatabase, ownerId: string, force = fa
       const { error } = await supabase.from('sync_events').upsert({
         idempotency_key: row.idempotency_key,
         owner_id: row.owner_id,
+        actor_id: session.user.id,
         entity_type: row.entity_type,
         entity_id: row.entity_id,
         operation: row.operation,

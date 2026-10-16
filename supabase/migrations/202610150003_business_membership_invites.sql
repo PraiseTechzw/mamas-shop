@@ -29,6 +29,13 @@ create table if not exists public.business_invites (
 create index if not exists business_members_owner_idx on public.business_members(owner_id, joined_at);
 create index if not exists business_invites_owner_created_idx on public.business_invites(owner_id, created_at desc);
 
+-- Preserve who uploaded each immutable event. Existing events were owner-only,
+-- so their actor is safely backfilled as the business owner.
+alter table public.sync_events
+  add column if not exists actor_id uuid;
+update public.sync_events set actor_id = owner_id where actor_id is null;
+alter table public.sync_events alter column actor_id set not null;
+
 alter table public.business_members enable row level security;
 alter table public.business_members force row level security;
 alter table public.business_invites enable row level security;
@@ -74,6 +81,9 @@ declare
   v_expires timestamptz := now() + interval '14 days';
 begin
   if v_uid is null then raise exception 'Sign in before creating an invitation.'; end if;
+  if exists (select 1 from public.business_members bm where bm.user_id = v_uid) then
+    raise exception 'Only the business owner can invite staff.';
+  end if;
   if p_code is null or length(trim(p_code)) < 32 or length(trim(p_code)) > 80 then
     raise exception 'Invitation code is invalid.';
   end if;
@@ -120,6 +130,11 @@ begin
     raise exception 'This invitation was issued to a different email address.';
   end if;
 
+  if exists (select 1 from public.business_invites bi where bi.owner_id = v_uid)
+     or exists (select 1 from public.sync_events se where se.owner_id = v_uid) then
+    raise exception 'This login owns a business. Use a separate staff login to join another shop.';
+  end if;
+
   select bm.owner_id into v_existing from public.business_members bm where bm.user_id = v_uid;
   if v_existing is not null and v_existing <> v_invite.owner_id then
     raise exception 'This login already belongs to another business. Use a separate staff login to join this shop.';
@@ -145,10 +160,11 @@ drop policy if exists "Users can append their own sync events" on public.sync_ev
 create policy "Business members can append sync events"
   on public.sync_events for insert to authenticated
   with check (
-    auth.uid() = owner_id
-    or exists (
+    auth.uid() = actor_id and (
+      auth.uid() = owner_id or exists (
       select 1 from public.business_members bm
       where bm.owner_id = sync_events.owner_id and bm.user_id = auth.uid()
+      )
     )
   );
 
