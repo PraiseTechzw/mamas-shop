@@ -48,6 +48,11 @@ export async function joinBusiness(db: SQLiteDatabase, userId: string, code: str
   // Load the shop's event archive before the app opens its business screens.
   // The owner-scoped RLS policy permits this only after the membership RPC succeeds.
   const sync = await syncOutbox(db, businessId, true);
-  if (sync.failed > 0) throw new Error('Your membership is active, but shop data could not fully download. Check your connection and submit the same invitation code again to retry.');
-  return { businessId, businessName: String(row.business_name ?? 'Shop') };
+  // The invitation code is one-use and already consumed, so a partial download
+  // must not send the staff member through the join flow again. The scope is
+  // persisted and the sync engine keeps retrying in the background.
+  const warning = sync.failed > 0
+    ? 'Your membership is active, but some shop data could not download yet. The app keeps retrying in the background; stay online until sync completes.'
+    : '';
+  return { businessId, businessName: String(row.business_name ?? 'Shop'), warning };
 }

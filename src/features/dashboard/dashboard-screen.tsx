@@ -3,15 +3,16 @@ import { Image, Pressable, RefreshControl, ScrollView, StyleSheet, View } from '
 import Svg, { Circle } from 'react-native-svg';
 import { router } from 'expo-router';
 import { useSQLiteContext } from 'expo-sqlite';
-import { Banknote, Bell, CircleAlert, CreditCard } from 'lucide-react-native';
+import { Banknote, Bell, CircleAlert, CreditCard, WalletCards } from 'lucide-react-native';
 import { colors } from '@/constants/theme';
 import { formatMoney } from '@/lib/format';
 import { getDashboardData, type DashboardData } from '@/db/repositories/dashboard';
+import { needsShopSetup } from '@/db/repositories/settings';
 import { useAuth } from '@/features/auth/auth-context';
 import { AppText, Card, SectionTitle } from '@/components/ui/primitives';
 import { useSyncStatus } from '@/features/sync/sync-context';
 
-const emptyData: DashboardData = { salesTodayCents: 0, salesTodayCount: 0, paymentsTodayCents: 0, creditOutstandingCents: 0, lowStockCount: 0, salesBySeller: [], salesByLocation: [] };
+const emptyData: DashboardData = { salesTodayCents: 0, salesTodayCount: 0, paymentsTodayCents: 0, creditOutstandingCents: 0, changeOwedOpenCents: 0, lowStockCount: 0, salesBySeller: [], salesByLocation: [] };
 const sellerColors = ['#4D35D7', '#F5A623', '#23A47A', '#E94E64', '#4388E8'];
 
 export function DashboardScreen() {
@@ -22,7 +23,14 @@ export function DashboardScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [breakdown, setBreakdown] = useState<'location' | 'seller'>('location');
   const firstName = String(session?.user.user_metadata?.full_name ?? session?.user.email?.split('@')[0] ?? 'Mama').split(' ')[0];
-  const load = useCallback(async () => { setRefreshing(true); try { setData(await getDashboardData(db, businessId ?? session?.user.id ?? '')); } finally { setRefreshing(false); } }, [db, businessId, session?.user.id]);
+  const load = useCallback(async () => {
+    setRefreshing(true);
+    try {
+      const ownerId = businessId ?? session?.user.id ?? '';
+      if (session && businessId === session.user.id && await needsShopSetup(db, ownerId)) { router.replace('/setup'); return; }
+      setData(await getDashboardData(db, ownerId));
+    } finally { setRefreshing(false); }
+  }, [db, businessId, session]);
   // eslint-disable-next-line react-hooks/set-state-in-effect -- refresh dashboard totals from local SQLite on screen entry.
   useEffect(() => { void load(); }, [load, revision]);
   return <ScrollView className="flex-1 bg-canvas" refreshControl={<RefreshControl refreshing={refreshing} onRefresh={load} tintColor={colors.purple} />} contentContainerStyle={styles.page}>
@@ -39,8 +47,9 @@ export function DashboardScreen() {
     <View style={styles.metrics}>
       <MetricCard title="Today’s Sales" value={formatMoney(data.salesTodayCents)} caption={`${data.salesTodayCount} ${data.salesTodayCount === 1 ? 'sale' : 'sales'} today`} icon={<Banknote size={17} stroke="#1A9A70" />} tone="green" />
       <MetricCard title="Received today" value={formatMoney(data.paymentsTodayCents)} caption="Sales payments and repayments" icon={<Banknote size={17} stroke="#338A72" />} tone="mint" />
-      <MetricCard title="Credit Owed" value={formatMoney(data.creditOutstandingCents)} caption="Outstanding customer credit" icon={<CreditCard size={17} stroke="#EC5366" />} tone="rose" />
-      <MetricCard title="Low Stock" value={`${data.lowStockCount} items`} caption={data.lowStockCount ? 'Restock needed' : 'Stock levels look good'} icon={<CircleAlert size={17} stroke="#ED8B22" />} tone="orange" />
+      <MetricCard title="Credit Owed" value={formatMoney(data.creditOutstandingCents)} caption="Outstanding customer credit" icon={<CreditCard size={17} stroke="#EC5366" />} tone="rose" onPress={() => router.push('/credit')} />
+      {data.changeOwedOpenCents > 0 ? <MetricCard title="Change Owed" value={formatMoney(data.changeOwedOpenCents)} caption="Change the shop must return" icon={<WalletCards size={17} stroke="#D77B1B" />} tone="amber" onPress={() => router.push('/credit')} /> : null}
+      <MetricCard title="Low Stock" value={`${data.lowStockCount} items`} caption={data.lowStockCount ? 'Restock needed' : 'Stock levels look good'} icon={<CircleAlert size={17} stroke="#ED8B22" />} tone="orange" onPress={() => router.push('/inventory')} />
     </View>
 
     <View style={styles.breakdownHeading}><SectionTitle>Sales Breakdown</SectionTitle></View>
@@ -59,12 +68,14 @@ export function DashboardScreen() {
   </ScrollView>;
 }
 
-function MetricCard({ title, value, caption, icon, tone }: { title: string; value: string; caption: string; icon: React.ReactNode; tone: 'green' | 'mint' | 'rose' | 'orange' }) {
-  return <Card style={{ ...styles.metricCard, backgroundColor: metricTones[tone].surface, borderColor: metricTones[tone].border }}>
+function MetricCard({ title, value, caption, icon, tone, onPress }: { title: string; value: string; caption: string; icon: React.ReactNode; tone: 'green' | 'mint' | 'rose' | 'orange' | 'amber'; onPress?: () => void }) {
+  const card = <Card style={{ ...styles.metricCard, backgroundColor: metricTones[tone].surface, borderColor: metricTones[tone].border }}>
     <View style={styles.metricTitleRow}><View style={[styles.metricIcon, { backgroundColor: metricTones[tone].icon }]}>{icon}</View><AppText variant="small" color={colors.text} numberOfLines={1} style={styles.metricTitle}>{title}</AppText></View>
     <AppText variant="amount" numberOfLines={1} style={styles.metricValue}>{value}</AppText>
     <AppText variant="small" color={metricTones[tone].accent} numberOfLines={1} style={styles.metricCaption}>{caption}</AppText>
   </Card>;
+  if (onPress) return <Pressable accessibilityRole="button" onPress={onPress} style={({ pressed }) => [styles.metricCardWrap, pressed && styles.metricCardPressed]}>{card}</Pressable>;
+  return <View style={styles.metricCardWrap}>{card}</View>;
 }
 
 function SellerBreakdown({ rows }: { rows: DashboardData['salesBySeller'] }) {
@@ -98,6 +109,7 @@ const metricTones = {
   mint: { surface: '#F0FAF8', border: '#E0F3EF', icon: '#DDF3ED', accent: '#20896F' },
   rose: { surface: '#FFF4F5', border: '#FBE7EA', icon: '#FFE2E6', accent: '#D64C5E' },
   orange: { surface: '#FFF8EE', border: '#F9EEDB', icon: '#FFEBD1', accent: '#D77B1B' },
+  amber: { surface: '#FFF9EC', border: '#F7EAC8', icon: '#FDF0CE', accent: '#B57A12' },
 };
 
 const styles = StyleSheet.create({
@@ -109,7 +121,9 @@ const styles = StyleSheet.create({
   greeting: { gap: 3, marginTop: 1, marginBottom: 2 },
   greetingTitle: { fontSize: 21, color: colors.text },
   metrics: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
-  metricCard: { width: '48%', flexGrow: 1, minWidth: '45%', padding: 12, gap: 7, borderRadius: 17 },
+  metricCardWrap: { width: '48%', flexGrow: 1, minWidth: '45%' },
+  metricCardPressed: { opacity: 0.85 },
+  metricCard: { padding: 12, gap: 7, borderRadius: 17 },
   metricTitleRow: { flexDirection: 'row', alignItems: 'center', gap: 7 },
   metricIcon: { width: 25, height: 25, alignItems: 'center', justifyContent: 'center', borderRadius: 8 },
   metricTitle: { flex: 1, fontFamily: 'Inter-Medium', fontSize: 11 },

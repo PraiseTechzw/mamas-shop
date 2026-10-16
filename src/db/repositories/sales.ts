@@ -68,7 +68,7 @@ export async function recordSale(db: SQLiteDatabase, input: RecordSaleInput) {
     totalCents += lineTotal;
   }
 
-  if (input.amountPaidCents < 0 || input.amountPaidCents > totalCents) throw new Error('The amount paid must be between zero and the sale total.');
+  if (!Number.isInteger(input.amountPaidCents) || input.amountPaidCents < 0 || input.amountPaidCents > totalCents) throw new Error('The amount paid must be between zero and the sale total.');
   const balanceCents = totalCents - input.amountPaidCents;
   const changeDueCents = input.changeDueCents ?? 0;
   const amountTenderedCents = input.amountTenderedCents ?? input.amountPaidCents;
@@ -76,7 +76,8 @@ export async function recordSale(db: SQLiteDatabase, input: RecordSaleInput) {
   if (changeDueCents > 0 && !input.customerId) throw new Error('Choose a customer to record change they will collect later.');
   if (balanceCents > 0 && !input.customerId) throw new Error('Choose a credit customer before leaving a balance.');
   const status = balanceCents === 0 ? 'PAID' : input.amountPaidCents > 0 ? 'PARTIAL' : 'CREDIT';
-  const outboxPayload = { id: saleId, receipt_number: receiptNumber, customer_id: input.customerId, seller_id: input.sellerId, seller_name: selectedSeller.name, location_id: selectedLocation.id, location_name: selectedLocation.name, total_cents: totalCents, paid_cents: input.amountPaidCents, balance_cents: balanceCents, amount_tendered_cents: amountTenderedCents, change_due_cents: changeDueCents, payment_method: input.method, status, created_at: now, items: lines };
+  const changeOwedId = changeDueCents > 0 ? Crypto.randomUUID() : null;
+  const outboxPayload = { id: saleId, receipt_number: receiptNumber, customer_id: input.customerId, seller_id: input.sellerId, seller_name: selectedSeller.name, location_id: selectedLocation.id, location_name: selectedLocation.name, total_cents: totalCents, paid_cents: input.amountPaidCents, balance_cents: balanceCents, amount_tendered_cents: amountTenderedCents, change_due_cents: changeDueCents, change_owed_id: changeOwedId, payment_method: input.method, status, created_at: now, items: lines };
 
   await db.withTransactionAsync(async () => {
     await ensurePrimaryLocation(db, input.ownerId);
@@ -87,7 +88,7 @@ export async function recordSale(db: SQLiteDatabase, input: RecordSaleInput) {
       const customer = await db.getFirstAsync<{ id: string }>('SELECT id FROM customers WHERE id = ? AND owner_id = ?', input.customerId, input.ownerId);
       if (!customer) throw new Error('Choose a customer from this shop before recording credit.');
     }
-    await db.runAsync('INSERT INTO sales (id, owner_id, receipt_number, customer_id, total_cents, paid_cents, balance_cents, status, created_by, created_at, seller_id, location_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)', saleId, input.ownerId, receiptNumber, input.customerId, totalCents, input.amountPaidCents, balanceCents, status, input.createdBy, now, input.sellerId, location.id);
+    await db.runAsync('INSERT INTO sales (id, owner_id, receipt_number, customer_id, total_cents, paid_cents, balance_cents, status, created_by, created_at, seller_id, location_id, amount_tendered_cents, change_due_cents) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)', saleId, input.ownerId, receiptNumber, input.customerId, totalCents, input.amountPaidCents, balanceCents, status, input.createdBy, now, input.sellerId, location.id, amountTenderedCents, changeDueCents);
     await db.runAsync(`INSERT INTO audit_log (id, owner_id, action, entity_type, entity_id, description, created_at) VALUES (?, ?, 'CREATE', 'sale', ?, ?, ?)`, Crypto.randomUUID(), input.ownerId, saleId, 'Recorded sale ' + receiptNumber + ' for ' + totalCents + ' cents', now);
     for (const line of lines) {
       const changed = await db.runAsync('UPDATE products SET stock_quantity = stock_quantity - ?, updated_at = ? WHERE id = ? AND owner_id = ? AND stock_quantity >= ?', line.quantity, now, line.productId, input.ownerId, line.quantity);
@@ -106,9 +107,14 @@ export async function recordSale(db: SQLiteDatabase, input: RecordSaleInput) {
       await db.runAsync('INSERT INTO payments (id, owner_id, customer_id, sale_id, amount_cents, method, kind, note, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)', paymentId, input.ownerId, input.customerId, saleId, input.amountPaidCents, input.method, 'SALE', paymentNote, now);
       if (input.customerId) await db.runAsync('INSERT INTO account_entries (id, owner_id, customer_id, sale_id, payment_id, entry_type, amount_cents, note, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)', Crypto.randomUUID(), input.ownerId, input.customerId, saleId, paymentId, 'PAYMENT', -input.amountPaidCents, paymentNote, now);
     }
+    if (changeOwedId && changeDueCents > 0) {
+      await db.runAsync('INSERT INTO change_owed (id, owner_id, customer_id, sale_id, receipt_number, amount_cents, status, created_at) VALUES (?, ?, ?, ?, ?, ?, \'OPEN\', ?)', changeOwedId, input.ownerId, input.customerId, saleId, receiptNumber, changeDueCents, now);
+      await db.runAsync(`INSERT INTO audit_log (id, owner_id, action, entity_type, entity_id, description, created_at) VALUES (?, ?, 'CREATE', 'change_owed', ?, ?, ?)`, Crypto.randomUUID(), input.ownerId, changeOwedId, 'Recorded ' + changeDueCents + ' cents change owed to customer for ' + receiptNumber, now);
+      await enqueueChange(db, input.ownerId, 'change_owed', changeOwedId, 'change_owed.create', { id: changeOwedId, customer_id: input.customerId, sale_id: saleId, receipt_number: receiptNumber, amount_cents: changeDueCents, created_at: now }, now);
+    }
     await enqueueChange(db, input.ownerId, 'sale', saleId, 'sale.create', outboxPayload, now);
   });
-  return { id: saleId, receiptNumber, totalCents, paidCents: input.amountPaidCents, balanceCents, status };
+  return { id: saleId, receiptNumber, totalCents, paidCents: input.amountPaidCents, balanceCents, changeOwedCents: changeDueCents, status };
 }
 
 export async function recordRepayment(db: SQLiteDatabase, ownerId: string, customerId: string, amountCents: number, method: PaymentMethod, note: string) {
@@ -127,4 +133,62 @@ export async function recordRepayment(db: SQLiteDatabase, ownerId: string, custo
     await enqueueChange(db, ownerId, 'payment', paymentId, 'credit.repayment.create', { id: paymentId, customer_id: customerId, amount_cents: amountCents, method, note: note.trim() || null, created_at: now }, now);
   });
   return id;
+}
+
+export type ChangeOwedRecord = { id: string; customer_id: string; customer_name: string; sale_id: string | null; receipt_number: string | null; amount_cents: number; status: 'OPEN' | 'SETTLED'; created_at: string; settled_at: string | null };
+
+export async function listChangeOwed(db: SQLiteDatabase, ownerId: string, options: { customerId?: string | null; status?: 'OPEN' | 'SETTLED' | 'ALL' } = {}): Promise<ChangeOwedRecord[]> {
+  const filters: string[] = ['co.owner_id = ?'];
+  const params: (string | number)[] = [ownerId];
+  if (options.customerId) { filters.push('co.customer_id = ?'); params.push(options.customerId); }
+  if (options.status && options.status !== 'ALL') { filters.push('co.status = ?'); params.push(options.status); }
+  return db.getAllAsync<ChangeOwedRecord>(`
+    SELECT co.id, co.customer_id, c.name AS customer_name, co.sale_id, co.receipt_number, co.amount_cents, co.status, co.created_at, co.settled_at
+    FROM change_owed co JOIN customers c ON c.id = co.customer_id
+    WHERE ${filters.join(' AND ')} ORDER BY co.created_at DESC LIMIT 100
+  `, ...params);
+}
+
+export async function getOpenChangeOwedTotal(db: SQLiteDatabase, ownerId: string): Promise<number> {
+  const row = await db.getFirstAsync<{ value: number }>("SELECT COALESCE(SUM(amount_cents), 0) AS value FROM change_owed WHERE owner_id = ? AND status = 'OPEN'", ownerId);
+  return row?.value ?? 0;
+}
+
+/** Marks change owed to the customer as returned. Never touches customer credit or payment totals. */
+export async function settleChangeOwed(db: SQLiteDatabase, ownerId: string, changeOwedId: string, note = '') {
+  const now = new Date().toISOString();
+  await db.withTransactionAsync(async () => {
+    const record = await db.getFirstAsync<{ id: string; status: string; receipt_number: string | null }>('SELECT id, status, receipt_number FROM change_owed WHERE id = ? AND owner_id = ?', changeOwedId, ownerId);
+    if (!record) throw new Error('This change record could not be found.');
+    if (record.status === 'SETTLED') throw new Error('This change has already been returned to the customer.');
+    await db.runAsync("UPDATE change_owed SET status = 'SETTLED', settled_at = ?, sync_state = 'PENDING' WHERE id = ? AND owner_id = ? AND status = 'OPEN'", now, changeOwedId, ownerId);
+    await db.runAsync(`INSERT INTO audit_log (id, owner_id, action, entity_type, entity_id, description, created_at) VALUES (?, ?, 'SETTLE', 'change_owed', ?, ?, ?)`, Crypto.randomUUID(), ownerId, changeOwedId, 'Change returned to customer' + (record.receipt_number ? ' for ' + record.receipt_number : '') + (note.trim() ? ' · ' + note.trim() : ''), now);
+    await enqueueChange(db, ownerId, 'change_owed', changeOwedId, 'change_owed.settle', { id: changeOwedId, settled_at: now }, now);
+  });
+}
+
+export type SaleDetail = {
+  sale: SaleSummary & { amount_tendered_cents: number | null; change_due_cents: number; created_by: string | null };
+  items: { id: string; product_id: string | null; product_name: string; quantity: number; unit_price_cents: number; line_total_cents: number; unit_cost_cents: number }[];
+  payments: { id: string; amount_cents: number; method: PaymentMethod; kind: 'SALE' | 'REPAYMENT'; note: string | null; created_at: string }[];
+  changeOwed: ChangeOwedRecord | null;
+};
+
+export async function getSaleDetail(db: SQLiteDatabase, ownerId: string, saleId: string): Promise<SaleDetail | null> {
+  const sale = await db.getFirstAsync<SaleDetail['sale']>(`
+    SELECT s.id, s.receipt_number, s.customer_id, c.name AS customer_name, s.seller_id, se.name AS seller_name,
+      s.location_id, l.name AS location_name, s.total_cents, s.paid_cents, s.balance_cents, s.status, s.created_at, s.sync_state,
+      s.amount_tendered_cents, s.change_due_cents, s.created_by
+    FROM sales s LEFT JOIN customers c ON c.id = s.customer_id AND c.owner_id = s.owner_id
+      LEFT JOIN sellers se ON se.id = s.seller_id AND se.owner_id = s.owner_id
+      LEFT JOIN inventory_locations l ON l.id = s.location_id AND l.owner_id = s.owner_id
+    WHERE s.owner_id = ? AND s.id = ?
+  `, ownerId, saleId);
+  if (!sale) return null;
+  const items = await db.getAllAsync<SaleDetail['items'][number]>('SELECT id, product_id, product_name, quantity, unit_price_cents, line_total_cents, unit_cost_cents FROM sale_items WHERE sale_id = ? ORDER BY rowid', saleId);
+  const payments = await db.getAllAsync<SaleDetail['payments'][number]>("SELECT id, amount_cents, method, kind, note, created_at FROM payments WHERE sale_id = ? AND owner_id = ? ORDER BY created_at", saleId, ownerId);
+  const changeOwed = await db.getFirstAsync<ChangeOwedRecord>(`
+    SELECT co.id, co.customer_id, c.name AS customer_name, co.sale_id, co.receipt_number, co.amount_cents, co.status, co.created_at, co.settled_at
+    FROM change_owed co JOIN customers c ON c.id = co.customer_id WHERE co.sale_id = ? AND co.owner_id = ?`, saleId, ownerId);
+  return { sale, items, payments, changeOwed: changeOwed ?? null };
 }

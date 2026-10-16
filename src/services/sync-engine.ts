@@ -18,6 +18,15 @@ export type SyncResult = { synced: number; downloaded: number; pending: number; 
 
 const BATCH_SIZE = 50;
 
+/** Local tables that carry a sync_state column, keyed by outbox entity type. Table names are static literals. */
+const SYNCED_STATE_TABLES: Record<string, string> = {
+  sale: 'sales',
+  payment: 'payments',
+  expense: 'expenses',
+  stock_movement: 'stock_movements',
+  change_owed: 'change_owed',
+};
+
 export async function getSyncRetryDelay(db: SQLiteDatabase, ownerId: string): Promise<number> {
   const row = await db.getFirstAsync<{ next_attempt_at: string | null }>(
     'SELECT MIN(next_attempt_at) AS next_attempt_at FROM sync_outbox WHERE owner_id = ? AND last_error IS NOT NULL', ownerId,
@@ -59,7 +68,8 @@ export async function syncOutbox(db: SQLiteDatabase, ownerId: string, force = fa
 
       await db.withTransactionAsync(async () => {
         await db.runAsync('DELETE FROM sync_outbox WHERE id = ? AND owner_id = ?', row.id, ownerId);
-        if (row.entity_type === 'sale') await db.runAsync("UPDATE sales SET sync_state = 'SYNCED' WHERE id = ? AND owner_id = ?", row.entity_id, ownerId);
+        const syncedColumn = SYNCED_STATE_TABLES[row.entity_type];
+        if (syncedColumn) await db.runAsync(`UPDATE ${syncedColumn} SET sync_state = 'SYNCED' WHERE id = ? AND owner_id = ?`, row.entity_id, ownerId);
       });
       synced += 1;
     } catch (error) {

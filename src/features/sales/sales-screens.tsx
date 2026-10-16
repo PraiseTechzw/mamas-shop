@@ -11,9 +11,11 @@ import {
 import { colors } from "@/constants/theme";
 import { getCustomer } from "@/db/repositories/customers";
 import {
+  getSaleDetail,
   listProductsForSale,
   listRecentSales,
   recordSale,
+  type SaleDetail,
 } from "@/db/repositories/sales";
 import type {
   Customer,
@@ -761,13 +763,7 @@ export function SalesHistoryScreen() {
                   <ChevronDown size={16} stroke={colors.secondary} style={{ transform: [{ rotate: expanded ? "180deg" : "0deg" }] }} />
                 </View>
                 {expanded ? (
-                  <View style={styles.historyDetails}>
-                    <AppText variant="small" color={colors.secondary}>Receipt · {sale.receipt_number}</AppText>
-                    <View style={styles.historyPaymentRow}><AppText variant="small" color={colors.secondary}>Location · seller</AppText><AppText variant="small" numberOfLines={1}>{sale.location_name ?? 'No location'} · {sale.seller_name ?? 'Unassigned'}</AppText></View>
-                    <View style={styles.historyPaymentRow}><AppText variant="small" color={colors.secondary}>Paid</AppText><AppText variant="small">{formatMoney(sale.paid_cents)}</AppText></View>
-                    {sale.balance_cents > 0 ? <View style={styles.historyPaymentRow}><AppText variant="small" color={colors.warning}>Still owed</AppText><AppText variant="label" color={colors.warning}>{formatMoney(sale.balance_cents)}</AppText></View> : null}
-                    <View style={styles.historySync}><View style={[styles.syncDot, sale.sync_state === "SYNCED" && styles.syncDotComplete]} /><AppText variant="small" color={colors.secondary}>{sale.sync_state === "SYNCED" ? "Uploaded to the cloud" : "Saved on this device · will sync when available"}</AppText></View>
-                  </View>
+                  <SaleDetailPanel db={db} ownerId={ownerId} sale={sale} />
                 ) : (
                   <View style={styles.historyMeta}><AppText variant="small" color={colors.secondary}>{sale.receipt_number}</AppText><StatusBadge label={syncLabel} tone={sale.sync_state === "SYNCED" ? "green" : "blue"} /></View>
                 )}
@@ -790,6 +786,64 @@ export function SalesHistoryScreen() {
         ) : null}
       </ScrollView>
     </Page>
+  );
+}
+
+function SaleDetailPanel({ db, ownerId, sale }: { db: ReturnType<typeof useSQLiteContext>; ownerId: string; sale: SaleSummary }) {
+  const [detail, setDetail] = useState<SaleDetail | null>(null);
+  const [error, setError] = useState("");
+  useEffect(() => {
+    let active = true;
+    void getSaleDetail(db, ownerId, sale.id).then((value) => {
+      if (!active) return;
+      if (value) setDetail(value);
+      else setError("This receipt could not be loaded from this device.");
+    }).catch((value: unknown) => {
+      if (active) setError(value instanceof Error ? value.message : "This receipt could not be loaded.");
+    });
+    return () => { active = false; };
+  }, [db, ownerId, sale.id]);
+  const methodLabel = (method: string) => method === "ECOCASH" ? "EcoCash" : method === "CARD" ? "Card" : method === "OTHER" ? "Other" : "Cash";
+  return (
+    <View style={styles.historyDetails}>
+      <AppText variant="small" color={colors.secondary}>Receipt · {sale.receipt_number}</AppText>
+      <View style={styles.historyPaymentRow}><AppText variant="small" color={colors.secondary}>Location · seller</AppText><AppText variant="small" numberOfLines={1}>{sale.location_name ?? 'No location'} · {sale.seller_name ?? 'Unassigned'}</AppText></View>
+      {error ? <AppText variant="small" color={colors.danger}>{error}</AppText> : null}
+      {detail ? <>
+        <AppText variant="label">Items</AppText>
+        {detail.items.map((item) => (
+          <View key={item.id} style={styles.historyPaymentRow}>
+            <AppText variant="small" numberOfLines={1} style={{ flex: 1 }}>{item.product_name} × {item.quantity}</AppText>
+            <AppText variant="small">{formatMoney(item.line_total_cents)}</AppText>
+          </View>
+        ))}
+        {!detail.items.length ? <AppText variant="small" color={colors.secondary}>No item lines were saved with this receipt.</AppText> : null}
+        <View style={styles.historyPaymentRow}><AppText variant="small" color={colors.secondary}>Total</AppText><AppText variant="label">{formatMoney(detail.sale.total_cents)}</AppText></View>
+        {detail.sale.amount_tendered_cents != null && detail.sale.amount_tendered_cents > detail.sale.total_cents ? (
+          <View style={styles.historyPaymentRow}><AppText variant="small" color={colors.secondary}>Cash tendered</AppText><AppText variant="small">{formatMoney(detail.sale.amount_tendered_cents)}</AppText></View>
+        ) : null}
+        {detail.payments.map((payment) => (
+          <View key={payment.id} style={styles.historyPaymentRow}>
+            <AppText variant="small" color={colors.secondary}>{payment.kind === 'REPAYMENT' ? 'Repayment' : 'Payment'} · {methodLabel(payment.method)}</AppText>
+            <AppText variant="small">{formatMoney(payment.amount_cents)}</AppText>
+          </View>
+        ))}
+        {!detail.payments.length ? <AppText variant="small" color={colors.secondary}>No payment recorded yet.</AppText> : null}
+        {detail.sale.balance_cents > 0 ? <View style={styles.historyPaymentRow}><AppText variant="small" color={colors.warning}>Still owed by customer</AppText><AppText variant="label" color={colors.warning}>{formatMoney(detail.sale.balance_cents)}</AppText></View> : null}
+        {detail.sale.change_due_cents > 0 ? (
+          detail.changeOwed?.status === 'OPEN'
+            ? <View style={styles.historyPaymentRow}><AppText variant="small" color={colors.warning}>Change owed · collect later</AppText><AppText variant="label" color={colors.warning}>{formatMoney(detail.changeOwed.amount_cents)}</AppText></View>
+            : detail.changeOwed?.status === 'SETTLED'
+              ? <View style={styles.historyPaymentRow}><AppText variant="small" color={colors.success}>Change returned {detail.changeOwed.settled_at ? formatDateTime(detail.changeOwed.settled_at) : ''}</AppText><AppText variant="small" color={colors.success}>{formatMoney(detail.changeOwed.amount_cents)}</AppText></View>
+              : null
+        ) : detail.sale.amount_tendered_cents != null && detail.sale.amount_tendered_cents > detail.sale.total_cents ? (
+          <View style={styles.historyPaymentRow}><AppText variant="small" color={colors.success}>Change given at checkout</AppText><AppText variant="small" color={colors.success}>{formatMoney(detail.sale.amount_tendered_cents - detail.sale.total_cents)}</AppText></View>
+        ) : null}
+      </> : !error ? (
+        <View style={styles.historyLoadingCompact}><ActivityIndicator size="small" color={colors.purple} /><AppText variant="small" color={colors.secondary}>Loading receipt…</AppText></View>
+      ) : null}
+      <View style={styles.historySync}><View style={[styles.syncDot, sale.sync_state === "SYNCED" && styles.syncDotComplete]} /><AppText variant="small" color={colors.secondary}>{sale.sync_state === "SYNCED" ? "Uploaded to the cloud" : "Saved on this device · will sync when available"}</AppText></View>
+    </View>
   );
 }
 
@@ -972,6 +1026,7 @@ const styles = StyleSheet.create({
   historyAmount: { alignItems: "flex-end", gap: 6 },
   historyMeta: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingTop: 9, borderTopWidth: 1, borderColor: colors.border },
   historyDetails: { gap: 8, paddingTop: 10, borderTopWidth: 1, borderColor: colors.border },
+  historyLoadingCompact: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 6 },
   historyPaymentRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
   historySync: { flexDirection: "row", alignItems: "center", gap: 7, marginTop: 2 },
   syncDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: colors.info },

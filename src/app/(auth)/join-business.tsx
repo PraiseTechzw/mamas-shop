@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { Alert } from 'react-native';
 import { router } from 'expo-router';
 import { Building2, Users } from 'lucide-react-native';
 import { useSQLiteContext } from 'expo-sqlite';
@@ -21,6 +22,7 @@ export default function JoinBusinessScreen() {
       const result = await joinBusiness(db, session.user.id, code);
       await setBusinessId(result.businessId);
       router.replace('/(tabs)');
+      if (result.warning) Alert.alert('Joined ' + result.businessName, result.warning);
     } catch (value) {
       setError(value instanceof Error ? value.message : 'Could not join this business. Check the code and try again.');
     } finally { setBusy(false); }

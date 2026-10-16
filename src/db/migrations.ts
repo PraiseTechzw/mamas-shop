@@ -1,6 +1,6 @@
 import type { SQLiteDatabase } from 'expo-sqlite';
 
-const DATABASE_VERSION = 8;
+export const DATABASE_VERSION = 9;
 
 export async function migrateDbIfNeeded(db: SQLiteDatabase) {
   const row = await db.getFirstAsync<{ user_version: number }>('PRAGMA user_version');
@@ -120,6 +120,30 @@ export async function migrateDbIfNeeded(db: SQLiteDatabase) {
       );
     `);
     version = 8;
+  }
+  if (version < 9) {
+    // Change the shop owes a customer (collected later) is money held on trust,
+    // not customer credit, so it lives in its own immutable-once ledger.
+    const saleColumns = await db.getAllAsync<{ name: string }>('PRAGMA table_info(sales)');
+    if (!saleColumns.some((column) => column.name === 'amount_tendered_cents')) await db.execAsync('ALTER TABLE sales ADD COLUMN amount_tendered_cents INTEGER');
+    if (!saleColumns.some((column) => column.name === 'change_due_cents')) await db.execAsync('ALTER TABLE sales ADD COLUMN change_due_cents INTEGER NOT NULL DEFAULT 0');
+    await db.execAsync(`
+      CREATE TABLE IF NOT EXISTS change_owed (
+        id TEXT PRIMARY KEY NOT NULL,
+        owner_id TEXT NOT NULL,
+        customer_id TEXT NOT NULL REFERENCES customers(id) ON DELETE CASCADE,
+        sale_id TEXT,
+        receipt_number TEXT,
+        amount_cents INTEGER NOT NULL CHECK(amount_cents > 0),
+        status TEXT NOT NULL DEFAULT 'OPEN' CHECK(status IN ('OPEN', 'SETTLED')),
+        created_at TEXT NOT NULL,
+        settled_at TEXT,
+        sync_state TEXT NOT NULL DEFAULT 'PENDING'
+      );
+      CREATE INDEX IF NOT EXISTS change_owed_owner_status_idx ON change_owed(owner_id, status, created_at DESC);
+      CREATE INDEX IF NOT EXISTS change_owed_customer_idx ON change_owed(customer_id, status);
+    `);
+    version = 9;
   }
   await db.execAsync('PRAGMA user_version = ' + Math.min(version, DATABASE_VERSION));
 }

@@ -91,6 +91,10 @@ async function applySale(db: SQLiteDatabase, event: RemoteSyncEvent, payload: Pa
     await db.runAsync("INSERT OR IGNORE INTO stock_movements (id, owner_id, product_id, movement_type, quantity, from_location_id, unit_cost_cents, note, created_at, sync_state) VALUES (?, ?, ?, 'SALE', ?, ?, ?, ?, ?, 'SYNCED')", `${id}:sale-stock:${index}`, ownerId, productId, quantity, locationId, unitCost, 'Sale ' + text(payload.receipt_number, id), event.occurred_at);
   }
   if (customerId) await db.runAsync("INSERT OR IGNORE INTO account_entries (id, owner_id, customer_id, sale_id, entry_type, amount_cents, note, created_at) VALUES (?, ?, ?, ?, 'SALE_CHARGE', ?, ?, ?)", `${id}:credit`, ownerId, customerId, id, int(payload.total_cents), 'Sale ' + text(payload.receipt_number, id), event.occurred_at);
+  const changeDue = int(payload.change_due_cents);
+  if (changeDue > 0 && customerId) {
+    await db.runAsync("INSERT OR IGNORE INTO change_owed (id, owner_id, customer_id, sale_id, receipt_number, amount_cents, status, created_at, sync_state) VALUES (?, ?, ?, ?, ?, ?, 'OPEN', ?, 'SYNCED')", text(payload.change_owed_id, `${id}:change`), ownerId, customerId, id, text(payload.receipt_number, id), changeDue, event.occurred_at);
+  }
   const paid = int(payload.paid_cents);
   if (paid > 0) {
     const paymentId = `${id}:payment`;
@@ -177,6 +181,22 @@ export async function applyRemoteEvent(db: SQLiteDatabase, event: RemoteSyncEven
       const note = text(payload.note) || null;
       await db.runAsync("INSERT INTO payments (id, owner_id, customer_id, amount_cents, method, kind, note, created_at, sync_state) VALUES (?, ?, ?, ?, ?, 'REPAYMENT', ?, ?, 'SYNCED')", id, event.owner_id, customerId, amount, text(payload.method, 'CASH'), note, text(payload.created_at, event.occurred_at));
       await db.runAsync("INSERT INTO account_entries (id, owner_id, customer_id, payment_id, entry_type, amount_cents, note, created_at) VALUES (?, ?, ?, ?, 'PAYMENT', ?, ?, ?)", `${id}:account`, event.owner_id, customerId, id, -amount, note || 'Payment received', text(payload.created_at, event.occurred_at));
+      break;
+    }
+    case 'change_owed.create': {
+      const id = text(payload.id, event.entity_id);
+      const customerId = text(payload.customer_id);
+      if (await db.getFirstAsync('SELECT id FROM change_owed WHERE id = ? AND owner_id = ?', id, event.owner_id)) break;
+      if (!await db.getFirstAsync('SELECT id FROM customers WHERE id = ? AND owner_id = ?', customerId, event.owner_id)) throw new Error('The customer owed this change has not arrived on this device yet.');
+      await db.runAsync("INSERT OR IGNORE INTO change_owed (id, owner_id, customer_id, sale_id, receipt_number, amount_cents, status, created_at, sync_state) VALUES (?, ?, ?, ?, ?, ?, 'OPEN', ?, 'SYNCED')", id, event.owner_id, customerId, text(payload.sale_id) || null, text(payload.receipt_number) || null, int(payload.amount_cents), text(payload.created_at, event.occurred_at));
+      break;
+    }
+    case 'change_owed.settle': {
+      const id = text(payload.id, event.entity_id);
+      const row = await db.getFirstAsync<{ status: string }>('SELECT status FROM change_owed WHERE id = ? AND owner_id = ?', id, event.owner_id);
+      if (!row) throw new Error('The change record being returned has not arrived on this device yet.');
+      if (row.status === 'SETTLED') break;
+      await db.runAsync("UPDATE change_owed SET status = 'SETTLED', settled_at = ?, sync_state = 'SYNCED' WHERE id = ? AND owner_id = ?", text(payload.settled_at, event.occurred_at), id, event.owner_id);
       break;
     }
     case 'expense.create':
