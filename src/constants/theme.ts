@@ -2,6 +2,8 @@ export const colors = {
   purple: '#5B43D6',
   deepPurple: '#38239B',
   lavender: '#8B78F0',
+  actionBlue: '#0646CE',
+  actionBlueBorder: '#1454F5',
   gold: '#FFC83D',
   background: '#F7F7FC',
   surface: '#FFFFFF',
@@ -18,7 +20,7 @@ export const colors = {
 } as const;
 
 export const spacing = { page: 20, card: 16, section: 24 } as const;
-export const radius = { card: 18, button: 14, input: 12, chip: 11 } as const;
+export const radius = { card: 18, button: 14, pill: 28, input: 12, chip: 11 } as const;
 export const currencyCode = 'USD';
 
 export const Colors = {

@@ -75,10 +75,6 @@ export function ShopSetupScreen() {
     };
   }, [db, draftReady, session?.user.id, name, currency, mode, selectedShop]);
 
-  useEffect(() => {
-    if (!loading && session && businessId && businessId !== session.user.id) router.replace('/(tabs)');
-  }, [loading, session, businessId]);
-
   const finish = async () => {
     if (draftSaveTimeout.current) clearTimeout(draftSaveTimeout.current);
     draftSaveTimeout.current = null;
@@ -141,6 +137,27 @@ export function ShopSetupScreen() {
   };
 
   const selectedShopDetails = shops.find((shop) => shop.owner_id === selectedShop);
+  const ctaLabel = busy ? (mode === 'create' ? 'Creating your shop…' : 'Joining shop…') : step === 1 ? 'Continue to review' : mode === 'create' ? 'Create my shop' : 'Join selected shop';
+  const ctaDisabled = mode === 'join' && step === 1 && shopsLoading;
+
+  useEffect(() => {
+    if (!__DEV__) return;
+    console.log('[ShopSetup] CTA state', {
+      mode,
+      step,
+      label: ctaLabel,
+      disabled: ctaDisabled,
+      loading: busy,
+      backgroundColor: colors.deepPurple,
+    });
+  }, [busy, ctaDisabled, ctaLabel, mode, step]);
+
+  const handleCtaPress = () => {
+    if (__DEV__) console.log('[ShopSetup] CTA pressed', { mode, step, disabled: ctaDisabled });
+    if (step === 1) continueSetup();
+    else if (mode === 'create') void finish();
+    else void joinShop();
+  };
 
   if (loading) return <LoadingScreen label="Preparing your shop setup…" />;
 
@@ -152,7 +169,7 @@ export function ShopSetupScreen() {
     </View>
     <View className="h-1.5 flex-row gap-1 overflow-hidden rounded-full bg-canvas">
       <View className="flex-1 rounded-full bg-brand" />
-      <View className={`flex-1 rounded-full ${step === 2 ? 'bg-brand' : 'bg-line'}`} />
+      <View className={`flex-1 rounded-full ${step === 2 ? 'bg-gold' : 'bg-line'}`} />
     </View>
     </View>
     <Card className="flex-row items-center gap-3 p-4">
@@ -194,11 +211,15 @@ export function ShopSetupScreen() {
         {error ? <AppText variant="small" color={colors.danger}>{error}</AppText> : null}
         {step === 2 ? <SecondaryButton label="Back to shop details" onPress={() => { setStep(1); setError(''); }} /> : null}
         <PrimaryButton
-          label={busy ? 'Creating your shop…' : step === 1 ? 'Continue to review' : 'Create my shop'}
+          label={ctaLabel}
           loading={busy}
-          onPress={() => void (step === 1 ? continueSetup() : finish())}
+          onPress={handleCtaPress}
           icon={step === 1 ? <ChevronRight size={18} stroke="#FFFFFF" /> : <WandSparkles size={17} stroke="#FFFFFF" />}
-          style={{ minHeight: 54, backgroundColor: colors.purple, elevation: 2 }}
+          disabled={ctaDisabled}
+          onLayout={(event) => {
+            if (__DEV__) console.log('[ShopSetup] CTA layout', event.nativeEvent.layout);
+          }}
+          style={{ flex: 1 }}
         />
       </View>
     </Card> : <Card className="gap-4 p-4">
@@ -224,12 +245,15 @@ export function ShopSetupScreen() {
         {error ? <AppText variant="small" color={colors.danger}>{error}</AppText> : null}
         {step === 2 ? <SecondaryButton label="Back to shop list" onPress={() => { setStep(1); setError(''); }} /> : null}
         <PrimaryButton
-          label={busy ? 'Joining shop…' : step === 1 ? 'Continue to review' : 'Join selected shop'}
+          label={ctaLabel}
           loading={busy}
-          disabled={step === 1 ? (!selectedShop || shopsLoading) : !selectedShop}
-          onPress={() => void (step === 1 ? continueSetup() : joinShop())}
+          disabled={ctaDisabled}
+          onPress={handleCtaPress}
           icon={step === 1 ? <ChevronRight size={18} stroke="#FFFFFF" /> : <Check size={17} stroke="#FFFFFF" />}
-          style={{ minHeight: 54, backgroundColor: colors.purple, elevation: 2 }}
+          onLayout={(event) => {
+            if (__DEV__) console.log('[ShopSetup] CTA layout', event.nativeEvent.layout);
+          }}
+          style={{ flex: 1 }}
         />
       </View>
     </Card>}

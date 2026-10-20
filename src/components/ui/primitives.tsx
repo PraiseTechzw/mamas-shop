@@ -1,5 +1,5 @@
 import { useState, type PropsWithChildren, type ReactNode, type Ref } from 'react';
-import { ActivityIndicator, Animated, Pressable, ScrollView, StyleSheet, Text, TextInput, View, type TextInputProps, type TextStyle, type ViewStyle } from 'react-native';
+import { ActivityIndicator, Animated, Pressable, ScrollView, StyleSheet, Text, TextInput, View, type LayoutChangeEvent, type TextInputProps, type TextStyle, type ViewStyle } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { ChevronLeft } from 'lucide-react-native';
 import { router } from 'expo-router';
@@ -20,12 +20,12 @@ export function Card({ children, style, className }: PropsWithChildren<{ style?:
   return <View className={`rounded-[18px] border border-line bg-surface p-4 ${className ?? ''}`} style={style}>{children}</View>;
 }
 
-export function PrimaryButton({ label, onPress, disabled, loading, icon, style }: { label: string; onPress: () => void; disabled?: boolean; loading?: boolean; icon?: ReactNode; style?: ViewStyle }) {
-  return <Pressable accessibilityRole="button" accessibilityState={{ disabled: disabled || loading, busy: loading }} onPress={onPress} disabled={disabled || loading} style={({ pressed }) => [styles.primaryButton, style, (disabled || loading) && styles.disabled, pressed && !disabled && !loading && { opacity: 0.88 }]}>{loading ? <ActivityIndicator color="#FFFFFF" size="small" /> : icon}<AppText variant="label" color="#FFFFFF">{label}</AppText></Pressable>;
+export function PrimaryButton({ label, onPress, disabled, loading, icon, style, onLayout }: { label: string; onPress: () => void; disabled?: boolean; loading?: boolean; icon?: ReactNode; style?: ViewStyle; onLayout?: (event: LayoutChangeEvent) => void }) {
+  return <Pressable onLayout={onLayout} accessibilityRole="button" accessibilityState={{ disabled: disabled || loading, busy: loading }} onPress={onPress} disabled={disabled || loading} style={[styles.primaryButton, style, (disabled || loading) && styles.disabled]}>{loading ? <ActivityIndicator color="#FFFFFF" size="small" /> : icon}<AppText variant="label" color="#FFFFFF">{label}</AppText></Pressable>;
 }
 
 export function SecondaryButton({ label, onPress, style, icon }: { label: string; onPress: () => void; style?: ViewStyle; icon?: ReactNode }) {
-  return <Pressable accessibilityRole="button" onPress={onPress} style={({ pressed }) => [styles.secondaryButton, style, pressed && { backgroundColor: colors.lavenderTint }]}>{icon}<AppText variant="label" color={colors.deepPurple}>{label}</AppText></Pressable>;
+  return <Pressable accessibilityRole="button" onPress={onPress} style={[styles.secondaryButton, style]}>{icon}<AppText variant="label" color={colors.actionBlue}>{label}</AppText></Pressable>;
 }
 
 export function Field({ label, error, containerStyle, inputStyle, icon, focusAccent = false, inputRef, onFocus, onBlur, ...props }: TextInputProps & { label: string; error?: string; containerStyle?: ViewStyle; inputStyle?: TextStyle; icon?: ReactNode; focusAccent?: boolean; inputRef?: Ref<TextInput> }) {
@@ -82,9 +82,9 @@ const styles = StyleSheet.create({
   headingText: { flex: 1 },
   back: { height: 40, width: 40, alignItems: 'center', justifyContent: 'center', borderRadius: 13, backgroundColor: colors.lavenderTint },
   card: { backgroundColor: colors.surface, borderRadius: radius.card, padding: spacing.card, borderWidth: 1, borderColor: colors.border },
-  primaryButton: { minHeight: 52, borderRadius: radius.button, backgroundColor: colors.purple, paddingHorizontal: 18, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 9 },
-  secondaryButton: { minHeight: 48, borderRadius: radius.button, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface, paddingHorizontal: 16, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 },
-  disabled: { opacity: 0.55 },
+  primaryButton: { height: 54, minHeight: 54, borderRadius: radius.pill, backgroundColor: colors.actionBlue, borderWidth: 1.5, borderColor: colors.actionBlue, paddingHorizontal: 18, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 9 },
+  secondaryButton: { height: 54, minHeight: 54, borderRadius: radius.pill, borderWidth: 1.5, borderColor: colors.actionBlueBorder, backgroundColor: colors.surface, paddingHorizontal: 16, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 },
+  disabled: { opacity: 0.78 },
   field: { gap: 0 },
   inputFrame: { minHeight: 54, flexDirection: 'row', alignItems: 'center', borderWidth: 1, borderColor: colors.border, borderRadius: 16, backgroundColor: colors.surface },
   inputIcon: { width: 42, alignItems: 'center', justifyContent: 'center' },

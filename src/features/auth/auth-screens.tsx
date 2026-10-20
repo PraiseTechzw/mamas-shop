@@ -4,7 +4,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import Svg, { Defs, LinearGradient, Path, Rect, Stop } from 'react-native-svg';
 import { router } from 'expo-router';
 import { ArrowLeft, ArrowRight, Eye, EyeOff, Heart, LockKeyhole, Mail, ShieldCheck, Tag, Truck, UserRound } from 'lucide-react-native';
-import { colors } from '@/constants/theme';
+import { colors, radius } from '@/constants/theme';
 import { AppText, Field } from '@/components/ui/primitives';
 import { useAuth } from './auth-context';
 import { supabase } from '@/lib/supabase';
@@ -22,7 +22,7 @@ function AuthButton({ label, onPress, variant = 'primary', loading = false, icon
   const primary = variant === 'primary';
   return <Pressable accessibilityRole="button" onPress={onPress} disabled={loading} style={({ pressed }) => [styles.buttonTouchArea, pressed && !loading && styles.buttonPressed]}>
     <View style={[styles.authButton, primary ? styles.primaryAction : styles.secondaryAction, loading && styles.buttonDisabled]}>
-      {loading ? <ActivityIndicator size="small" color={primary ? '#FFFFFF' : '#0646CE'} /> : <><AppText variant="label" color={primary ? '#FFFFFF' : '#0646CE'} style={styles.actionLabel}>{label}</AppText>{icon}</>}
+      {loading ? <ActivityIndicator size="small" color={primary ? '#FFFFFF' : colors.actionBlue} /> : <><AppText variant="label" color={primary ? '#FFFFFF' : colors.actionBlue} style={styles.actionLabel}>{label}</AppText>{icon}</>}
     </View>
   </Pressable>;
 }
@@ -243,15 +243,15 @@ const styles = StyleSheet.create({
   waveDock: { position: 'absolute', right: 0, bottom: 0, left: 0, height: 52 },
   welcomeActions: { width: '92%', alignSelf: 'center', gap: 9, marginTop: 18 },
   buttonTouchArea: { width: '100%' },
-  authButton: { minHeight: 54, width: '100%', borderRadius: 28, paddingHorizontal: 18, alignItems: 'center', justifyContent: 'center', flexDirection: 'row', gap: 12, borderWidth: 1.5 },
-  primaryAction: { backgroundColor: '#0646CE', borderColor: '#0646CE' },
-  secondaryAction: { backgroundColor: colors.surface, borderColor: '#1454F5' },
+  authButton: { minHeight: 54, width: '100%', borderRadius: radius.pill, paddingHorizontal: 18, alignItems: 'center', justifyContent: 'center', flexDirection: 'row', gap: 12, borderWidth: 1.5 },
+  primaryAction: { backgroundColor: colors.actionBlue, borderColor: colors.actionBlue },
+  secondaryAction: { backgroundColor: colors.surface, borderColor: colors.actionBlueBorder },
   actionLabel: { fontFamily: 'Inter-SemiBold', fontSize: 16, letterSpacing: 0.1 },
   buttonPressed: { opacity: 0.86, transform: [{ scale: 0.99 }] },
   buttonDisabled: { opacity: 0.65 },
   country: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', paddingTop: 5, marginTop: 'auto', gap: 12 },
   flag: { fontSize: 23 },
-  footerDivider: { width: 1.5, height: 22, borderRadius: 999, backgroundColor: '#1454F5' },
+  footerDivider: { width: 1.5, height: 22, borderRadius: 999, backgroundColor: colors.actionBlueBorder },
   loginPage: { flexGrow: 1, paddingHorizontal: 24, paddingTop: 12, paddingBottom: 18, gap: 16 },
   backButton: { width: 38, height: 38, borderRadius: 13, backgroundColor: colors.lavenderTint, alignItems: 'center', justifyContent: 'center' },
   loginIntro: { alignItems: 'center', gap: 3, marginTop: 2, marginBottom: 2 },

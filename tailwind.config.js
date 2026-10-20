@@ -5,7 +5,7 @@ module.exports = {
   theme: {
     extend: {
       colors: {
-        brand: { DEFAULT: '#5B43D6', deep: '#38239B', soft: '#8B78F0', tint: '#EEEAFB' },
+        brand: { DEFAULT: '#5B43D6', deep: '#38239B', soft: '#8B78F0', tint: '#EEEAFB', action: '#0646CE', actionBorder: '#1454F5' },
         gold: '#FFC83D',
         canvas: '#F7F7FC',
         surface: '#FFFFFF',
