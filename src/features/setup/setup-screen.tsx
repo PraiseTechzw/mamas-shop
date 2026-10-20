@@ -118,8 +118,9 @@ export function ShopSetupScreen() {
       await clearSetupDraft(db, session.user.id);
       router.replace('/(tabs)');
     } catch (value) {
-      setError(value instanceof Error ? value.message : 'Could not join this shop. Please try again.');
-      await loadShops();
+      const message = value instanceof Error ? value.message : 'Could not join this shop. Please try again.';
+      if (__DEV__) console.error('[ShopSetup] join failed', { message });
+      setError(message);
     } finally { setBusy(false); }
   };
 
