@@ -26,7 +26,7 @@ export default function TabsLayout() {
     <Tabs.Screen name="index" options={{ title: 'Home', tabBarIcon: tabBarIcon(House) }} />
     <Tabs.Screen name="sales" options={{ title: 'Sales', tabBarIcon: tabBarIcon(ReceiptText) }} />
     <Tabs.Screen name="inventory" options={{ title: 'Inventory', tabBarIcon: tabBarIcon(Package) }} />
-    <Tabs.Screen name="credit" options={{ title: 'Credit', tabBarIcon: tabBarIcon(Users) }} />
+    <Tabs.Screen name="credit" options={{ title: 'Customers', tabBarIcon: tabBarIcon(Users) }} />
     <Tabs.Screen name="more" options={{ title: 'More', tabBarIcon: tabBarIcon(Ellipsis) }} />
   </Tabs>;
 }

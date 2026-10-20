@@ -160,6 +160,16 @@ export async function applyRemoteEvent(db: SQLiteDatabase, event: RemoteSyncEven
     case 'customer.create':
       await db.runAsync('INSERT OR IGNORE INTO customers (id, owner_id, name, phone, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)', text(payload.id, event.entity_id), event.owner_id, text(payload.name, 'Customer'), text(payload.phone) || null, text(payload.created_at, event.occurred_at), text(payload.created_at, event.occurred_at));
       break;
+    case 'customer.update': {
+      const id = text(payload.id, event.entity_id);
+      const updatedAt = text(payload.updated_at, event.occurred_at);
+      const current = await db.getFirstAsync<{ updated_at: string }>('SELECT updated_at FROM customers WHERE id = ? AND owner_id = ?', id, event.owner_id);
+      if (!current) throw new Error('The customer profile has not arrived on this device yet.');
+      if (current.updated_at < updatedAt) {
+        await db.runAsync('UPDATE customers SET name = ?, phone = ?, updated_at = ? WHERE id = ? AND owner_id = ?', text(payload.name, 'Customer'), text(payload.phone) || null, updatedAt, id, event.owner_id);
+      }
+      break;
+    }
     case 'product.create':
     case 'product.update':
       await applyProduct(db, event, payload);

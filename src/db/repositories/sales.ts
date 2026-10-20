@@ -20,12 +20,31 @@ export async function listRecentSales(db: SQLiteDatabase, ownerId: string, limit
   return db.getAllAsync<SaleSummary>(`
     SELECT s.id, s.receipt_number, s.customer_id, c.name AS customer_name,
       s.seller_id, se.name AS seller_name, s.location_id, l.name AS location_name,
-      s.total_cents, s.paid_cents, s.balance_cents, s.status, s.created_at, s.sync_state
+      s.total_cents, s.paid_cents, s.balance_cents, s.status, s.created_at, s.sync_state,
+      COALESCE((SELECT SUM(si.quantity) FROM sale_items si WHERE si.sale_id = s.id), 0) AS item_count,
+      (SELECT CASE WHEN COUNT(DISTINCT p.method) > 1 THEN 'MIXED' ELSE MAX(p.method) END
+        FROM payments p WHERE p.sale_id = s.id AND p.kind = 'SALE') AS payment_method
     FROM sales s LEFT JOIN customers c ON c.id = s.customer_id AND c.owner_id = s.owner_id
       LEFT JOIN sellers se ON se.id = s.seller_id AND se.owner_id = s.owner_id
       LEFT JOIN inventory_locations l ON l.id = s.location_id AND l.owner_id = s.owner_id
     WHERE s.owner_id = ? ORDER BY s.created_at DESC LIMIT ?
   `, ownerId, limit);
+}
+
+export async function listSalesBetween(db: SQLiteDatabase, ownerId: string, startInclusive: string, endExclusive: string, limit = 1000): Promise<SaleSummary[]> {
+  return db.getAllAsync<SaleSummary>(`
+    SELECT s.id, s.receipt_number, s.customer_id, c.name AS customer_name,
+      s.seller_id, se.name AS seller_name, s.location_id, l.name AS location_name,
+      s.total_cents, s.paid_cents, s.balance_cents, s.status, s.created_at, s.sync_state,
+      COALESCE((SELECT SUM(si.quantity) FROM sale_items si WHERE si.sale_id = s.id), 0) AS item_count,
+      (SELECT CASE WHEN COUNT(DISTINCT p.method) > 1 THEN 'MIXED' ELSE MAX(p.method) END
+        FROM payments p WHERE p.sale_id = s.id AND p.kind = 'SALE') AS payment_method
+    FROM sales s LEFT JOIN customers c ON c.id = s.customer_id AND c.owner_id = s.owner_id
+      LEFT JOIN sellers se ON se.id = s.seller_id AND se.owner_id = s.owner_id
+      LEFT JOIN inventory_locations l ON l.id = s.location_id AND l.owner_id = s.owner_id
+    WHERE s.owner_id = ? AND s.created_at >= ? AND s.created_at < ?
+    ORDER BY s.created_at DESC LIMIT ?
+  `, ownerId, startInclusive, endExclusive, limit);
 }
 
 export type SaleLineInput = { productId: string; quantity: number };

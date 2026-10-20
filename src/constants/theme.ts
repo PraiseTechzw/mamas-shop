@@ -12,7 +12,9 @@ export const colors = {
   success: '#16865D',
   warning: '#D97706',
   danger: '#DC3545',
+  dangerTint: '#FCEBED',
   info: '#2474E5',
+  infoTint: '#EAF2FF',
 } as const;
 
 export const spacing = { page: 20, card: 16, section: 24 } as const;
