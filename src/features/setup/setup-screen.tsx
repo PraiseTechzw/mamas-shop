@@ -118,8 +118,24 @@ export function ShopSetupScreen() {
       await clearSetupDraft(db, session.user.id);
       router.replace('/(tabs)');
     } catch (value) {
-      const message = value instanceof Error ? value.message : 'Could not join this shop. Please try again.';
-      if (__DEV__) console.error('[ShopSetup] join failed', { message });
+      const errorValue = value && typeof value === 'object'
+        ? value as { message?: unknown; code?: unknown; details?: unknown; hint?: unknown }
+        : null;
+      const message = value instanceof Error
+        ? value.message
+        : typeof value === 'string'
+          ? value
+          : typeof errorValue?.message === 'string'
+            ? errorValue.message
+            : typeof errorValue?.details === 'string'
+              ? errorValue.details
+              : 'Could not join this shop. Please try again.';
+      if (__DEV__) console.error('[ShopSetup] join failed', {
+        message,
+        code: errorValue?.code,
+        details: errorValue?.details,
+        hint: errorValue?.hint,
+      });
       setError(message);
     } finally { setBusy(false); }
   };

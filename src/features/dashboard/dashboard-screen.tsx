@@ -4,7 +4,6 @@ import {
   Pressable,
   RefreshControl,
   ScrollView,
-  StyleSheet,
   View,
 } from 'react-native';
 import { router } from 'expo-router';
@@ -188,11 +187,11 @@ export function DashboardScreen() {
 
         {/* ── Header ── */}
         <View className="flex-row items-center gap-3 pt-1">
-          <View className="h-11 w-11 items-center justify-center rounded-full bg-brand-tint">
-            <CircleUserRound size={22} color={colors.deepPurple} />
+          <View className="h-12 w-12 items-center justify-center rounded-2xl bg-brand">
+            <CircleUserRound size={23} color={colors.surface} />
           </View>
           <View className="min-w-0 flex-1">
-            <AppText variant="heading" color={colors.deepPurple} style={{ fontSize: 16 }} numberOfLines={1}>
+            <AppText variant="heading" color={colors.text} style={{ fontSize: 16 }} numberOfLines={1}>
               {greeting}, {firstName}!
             </AppText>
             <AppText variant="small" color={colors.secondary} style={{ fontSize: 11 }}>{dayLabel}</AppText>
@@ -211,28 +210,22 @@ export function DashboardScreen() {
           accessibilityRole="button"
           accessibilityLabel="Open daily sales summary"
           onPress={() => router.push("/sales/daily-summary")}
-          className="rounded-3xl px-5 pb-4 pt-5"
-          style={{
-            backgroundColor: colors.deepPurple,
-            shadowColor: '#1A0D6B',
-            shadowOpacity: 0.45,
-            shadowRadius: 28,
-            shadowOffset: { width: 0, height: 12 },
-            elevation: 14,
-          }}
+          className="relative overflow-hidden rounded-3xl bg-brand-deep px-5 pb-4 pt-5 shadow-lg shadow-brand-deep active:opacity-90"
         >
+          {/* Quiet concentric brand motif, kept behind the card content. */}
+          <View pointerEvents="none" className="absolute -right-10 -top-14 h-48 w-48 rounded-full border-8 border-white/5" />
+          <View pointerEvents="none" className="absolute right-2 top-5 h-28 w-28 rounded-full border-2 border-gold/20" />
+          <View pointerEvents="none" className="absolute right-11 top-14 h-12 w-12 rounded-full bg-gold/10" />
+          <View pointerEvents="none" className="absolute right-8 top-10 h-2 w-2 rounded-full bg-gold/70" />
           {/* Top row */}
           <View className="mb-2 flex-row items-center justify-between">
             <View className="flex-row items-center gap-1.5">
-              <ChartNoAxesColumnIncreasing size={13} color={colors.lavender} />
-              <AppText variant="small" color={colors.lavender} style={{ fontSize: 10, letterSpacing: 1 }}>
+              <ChartNoAxesColumnIncreasing size={15} color={colors.gold} />
+              <AppText variant="small" color={colors.surface} style={{ fontSize: 10, letterSpacing: 1 }}>
                 {`TODAY'S REVENUE`}
               </AppText>
             </View>
-            <View
-              className="flex-row items-center gap-1 rounded-full px-2.5 py-1"
-              style={{ backgroundColor: 'rgba(255,200,61,0.2)' }}
-            >
+            <View className="flex-row items-center gap-1 rounded-full bg-gold/20 px-2.5 py-1">
               <Sparkles size={10} color={colors.gold} />
               <AppText variant="small" color={colors.gold} style={{ fontSize: 10 }}>Keep it up!</AppText>
             </View>
@@ -243,13 +236,10 @@ export function DashboardScreen() {
 
           {/* Progress bar */}
           <View className="mb-1 mt-3 gap-2">
-            <View
-              className="h-1.5 overflow-hidden rounded-full"
-              style={{ backgroundColor: 'rgba(255,255,255,0.15)' }}
-            >
+            <View className="h-1.5 overflow-hidden rounded-full bg-white/15">
               <View
-                className="h-full rounded-full"
-                style={{ width: `${progressPct}%`, backgroundColor: colors.gold }}
+                className="h-full rounded-full bg-gold"
+                style={{ width: `${progressPct}%` }}
               />
             </View>
             <View className="flex-row items-center justify-between">
@@ -263,7 +253,7 @@ export function DashboardScreen() {
           </View>
 
           {/* Divider */}
-          <View className="my-3" style={{ height: StyleSheet.hairlineWidth, backgroundColor: 'rgba(255,255,255,0.18)' }} />
+          <View className="my-3 h-px bg-white/15" />
 
           {/* Footer */}
           <View className="flex-row items-center justify-between">
@@ -344,16 +334,14 @@ export function DashboardScreen() {
           <View className="flex-row gap-2.5">
             <QuickAction
               title="New Sale"
-              icon={<ShoppingCart size={22} color="#fff" />}
-              className="bg-info"
-              textColor="#fff"
+              icon={<ShoppingCart size={22} color={colors.surface} />}
+              tone="primary"
               onPress={() => { useCart.getState().clear(); router.push('/(tabs)/sales'); }}
             />
             <QuickAction
               title="Add Stock"
-              icon={<PackagePlus size={22} color={colors.text} />}
-              className="bg-gold"
-              textColor={colors.text}
+              icon={<PackagePlus size={22} color={colors.deepPurple} />}
+              tone="gold"
               onPress={() => router.push('/inventory/receive-stock')}
             />
           </View>
@@ -361,15 +349,13 @@ export function DashboardScreen() {
             <QuickAction
               title="Customers"
               icon={<UsersRound size={22} color={colors.deepPurple} />}
-              className="bg-brand-tint"
-              textColor={colors.deepPurple}
+              tone="soft"
               onPress={() => router.push('/(tabs)/credit')}
             />
             <QuickAction
               title="Sales History"
               icon={<History size={22} color={colors.deepPurple} />}
-              className="bg-info/10"
-              textColor={colors.deepPurple}
+              tone="outline"
               onPress={() => router.push('/sales/history')}
             />
           </View>
@@ -394,18 +380,12 @@ function HeroAmount({ cents }: { cents: number }) {
 }
 
 function DiffChip({ label, positive }: { label: string; positive: boolean | null }) {
-  const bg =
-    positive === true ? 'rgba(22,134,93,0.28)' :
-    positive === false ? 'rgba(220,53,69,0.28)' :
-    'rgba(255,255,255,0.14)';
-  const textColor =
-    positive === true ? '#80FFCA' :
-    positive === false ? '#FFAAAA' :
-    colors.lavender;
+  const bg = positive === true ? 'bg-gold/20' : positive === false ? 'bg-danger/20' : 'bg-white/15';
+  const textColor = positive === true ? colors.gold : positive === false ? colors.dangerTint : colors.surface;
   const Icon = positive === true ? ArrowUp : positive === false ? ArrowDown : Minus;
 
   return (
-    <View className="flex-row items-center gap-1 rounded-full px-2 py-1" style={{ backgroundColor: bg }}>
+    <View className={`flex-row items-center gap-1 rounded-full px-2 py-1 ${bg}`}>
       <Icon size={10} color={textColor} />
       <AppText variant="small" color={textColor} style={{ fontSize: 10 }}>{label}</AppText>
     </View>
@@ -426,9 +406,10 @@ function MetricCard({
 }) {
   const inner = (pressed = false) => (
     <View
-      className={`min-h-[100px] flex-1 gap-1 rounded-2xl border border-line bg-surface px-3.5 py-3 ${pressed ? 'bg-brand-tint/40' : ''}`}
-      style={{ shadowColor: '#202033', shadowOpacity: 0.06, shadowRadius: 8, shadowOffset: { width: 0, height: 3 }, elevation: 2 }}
+      className={`relative min-h-[100px] flex-1 gap-1 overflow-hidden rounded-2xl border border-line bg-surface px-3.5 py-3 shadow-sm ${pressed ? 'bg-brand-tint/40' : ''}`}
     >
+      <View pointerEvents="none" className="absolute -bottom-7 -right-5 h-16 w-16 rounded-full border-8 border-brand-tint/60" />
+      <View pointerEvents="none" className="absolute bottom-3 right-3 h-1.5 w-1.5 rounded-full bg-gold/70" />
       {/* Icon + optional chevron */}
       <View className="mb-0.5 flex-row items-center justify-between">
         <View className={`h-8 w-8 items-center justify-center rounded-xl ${iconBg}`}>
@@ -482,14 +463,10 @@ function StockAlertRow({ count }: { count: number }) {
       accessibilityRole="button"
       accessibilityLabel={ok ? 'Stock looks good. Open inventory' : `${count} low stock items. Open inventory`}
       onPress={() => router.push('/(tabs)/inventory')}
-      className={`flex-row items-center gap-3 overflow-hidden rounded-2xl border bg-surface active:opacity-80 ${ok ? 'border-success/20' : 'border-warning/30'}`}
-      style={{ shadowColor: '#202033', shadowOpacity: 0.05, shadowRadius: 6, shadowOffset: { width: 0, height: 2 }, elevation: 1 }}
+      className={`flex-row items-center gap-3 overflow-hidden rounded-2xl border bg-surface shadow-sm active:opacity-80 ${ok ? 'border-success/20' : 'border-warning/30'}`}
     >
       {/* Coloured left stripe */}
-      <View
-        className="w-1 self-stretch"
-        style={{ backgroundColor: ok ? colors.success : colors.warning }}
-      />
+      <View className={`w-1 self-stretch ${ok ? 'bg-success' : 'bg-warning'}`} />
 
       {/* Icon */}
       <View className={`h-10 w-10 items-center justify-center rounded-xl ${ok ? 'bg-success/10' : 'bg-warning/10'}`}>
@@ -522,25 +499,32 @@ function StockAlertRow({ count }: { count: number }) {
 }
 
 function QuickAction({
-  title, icon, className: cls, textColor, onPress,
+  title, icon, tone, onPress,
 }: {
   title: string;
   icon: ReactNode;
-  /** NativeWind bg class e.g. "bg-info" */
-  className: string;
-  textColor: string;
+  tone: 'primary' | 'gold' | 'soft' | 'outline';
   onPress: () => void;
 }) {
+  const tileClass = tone === 'primary'
+    ? 'border-brand bg-brand'
+    : tone === 'gold'
+      ? 'border-gold bg-gold'
+      : tone === 'soft'
+        ? 'border-brand-tint bg-brand-tint'
+        : 'border-line bg-surface';
+  const foreground = tone === 'primary' ? colors.surface : colors.deepPurple;
+
   return (
     <Pressable
       accessibilityRole="button"
       onPress={onPress}
-      className={`h-20 min-w-0 flex-1 items-center justify-center gap-1.5 rounded-2xl active:opacity-75 ${cls}`}
+      className={`min-h-24 min-w-0 flex-1 items-center justify-center gap-2 rounded-2xl border px-3 py-3 shadow-sm active:opacity-75 ${tileClass}`}
     >
-      <View className="h-9 w-9 items-center justify-center rounded-xl" style={{ backgroundColor: 'rgba(0,0,0,0.06)' }}>
+      <View className={`h-10 w-10 items-center justify-center rounded-xl ${tone === 'primary' ? 'bg-white/15' : 'bg-white/70'}`}>
         {icon}
       </View>
-      <AppText variant="label" color={textColor} style={{ fontSize: 12 }}>
+      <AppText variant="label" color={foreground} style={{ fontSize: 12 }}>
         {title}
       </AppText>
     </Pressable>

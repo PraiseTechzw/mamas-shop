@@ -3,7 +3,7 @@ import { ActivityIndicator, Animated, Pressable, ScrollView, StyleSheet, Text, T
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { ChevronLeft } from 'lucide-react-native';
 import { router } from 'expo-router';
-import { colors, radius, spacing } from '@/constants/theme';
+import { colors, radius } from '@/constants/theme';
 
 export function AppText({ children, variant = 'body', color, style, numberOfLines }: PropsWithChildren<{ variant?: 'body' | 'small' | 'label' | 'title' | 'heading' | 'amount'; color?: string; style?: object; numberOfLines?: number }>) {
   const fontFamily = variant === 'title' || variant === 'heading' ? 'Poppins-SemiBold' : variant === 'amount' ? 'Inter-SemiBold' : variant === 'label' ? 'Inter-Medium' : 'Inter-Regular';
@@ -12,20 +12,27 @@ export function AppText({ children, variant = 'body', color, style, numberOfLine
 }
 
 export function Page({ children, title, subtitle, back = false, right, scroll = true, contentStyle, footer }: PropsWithChildren<{ title?: string; subtitle?: string; back?: boolean; right?: ReactNode; scroll?: boolean; contentStyle?: ViewStyle; footer?: ReactNode }>) {
-  const content = <View style={[styles.content, contentStyle]}>{title ? <View style={styles.headingRow}>{back ? <Pressable onPress={() => router.back()} hitSlop={12} style={styles.back}><ChevronLeft stroke={colors.deepPurple} size={22} /></Pressable> : null}<View style={styles.headingText}><AppText variant="title">{title}</AppText>{subtitle ? <AppText color={colors.secondary} style={{ marginTop: 3 }}>{subtitle}</AppText> : null}</View>{right}</View> : null}{children}</View>;
+  const content = <View className="gap-4 px-5 pb-6 pt-3" style={contentStyle}>{title ? <View className="mb-1 flex-row items-center gap-2.5">{back ? <Pressable onPress={() => router.back()} hitSlop={12} className="h-10 w-10 items-center justify-center rounded-[13px] bg-brand-tint"><ChevronLeft stroke={colors.deepPurple} size={22} /></Pressable> : null}<View className="min-w-0 flex-1"><AppText variant="title">{title}</AppText>{subtitle ? <AppText color={colors.secondary} style={{ marginTop: 3 }}>{subtitle}</AppText> : null}</View>{right}</View> : null}{children}</View>;
   return <SafeAreaView className="flex-1 bg-canvas" edges={['top', 'bottom']}><View className="flex-1 bg-canvas">{scroll ? <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={{ flexGrow: 1, paddingBottom: 24 }}>{content}</ScrollView> : content}{footer ? <View className="border-t border-line bg-surface px-4 pt-2" style={{ paddingBottom: 8 }}>{footer}</View> : null}</View></SafeAreaView>;
 }
 
 export function Card({ children, style, className }: PropsWithChildren<{ style?: ViewStyle; className?: string }>) {
-  return <View className={`rounded-[18px] border border-line bg-surface p-4 ${className ?? ''}`} style={style}>{children}</View>;
+  return <View className={`relative rounded-[18px] border border-line bg-surface p-4 ${className ?? ''}`} style={style}>
+    <View pointerEvents="none" className="absolute right-3 top-3 flex-row gap-1">
+      <View className="h-1.5 w-1.5 rounded-full bg-gold/70" />
+      <View className="h-1.5 w-1.5 rounded-full bg-brand/35" />
+      <View className="h-1.5 w-1.5 rounded-full bg-brand-tint" />
+    </View>
+    {children}
+  </View>;
 }
 
 export function PrimaryButton({ label, onPress, disabled, loading, icon, style, onLayout }: { label: string; onPress: () => void; disabled?: boolean; loading?: boolean; icon?: ReactNode; style?: ViewStyle; onLayout?: (event: LayoutChangeEvent) => void }) {
-  return <Pressable onLayout={onLayout} accessibilityRole="button" accessibilityState={{ disabled: disabled || loading, busy: loading }} onPress={onPress} disabled={disabled || loading} style={[styles.primaryButton, style, (disabled || loading) && styles.disabled]}>{loading ? <ActivityIndicator color={colors.surface} size="small" /> : icon}<AppText variant="label" color={colors.surface}>{label}</AppText></Pressable>;
+  return <Pressable onLayout={onLayout} accessibilityRole="button" accessibilityState={{ disabled: disabled || loading, busy: loading }} onPress={onPress} disabled={disabled || loading} className={`h-[54px] min-h-[54px] flex-row items-center justify-center gap-2 rounded-full border-[1.5px] border-brand bg-brand px-[18px] active:opacity-90 ${(disabled || loading) ? 'opacity-80' : ''}`} style={style}>{loading ? <ActivityIndicator color={colors.surface} size="small" /> : icon}<AppText variant="label" color={colors.surface}>{label}</AppText></Pressable>;
 }
 
 export function SecondaryButton({ label, onPress, style, icon }: { label: string; onPress: () => void; style?: ViewStyle; icon?: ReactNode }) {
-  return <Pressable accessibilityRole="button" onPress={onPress} style={[styles.secondaryButton, style]}>{icon}<AppText variant="label" color={colors.deepPurple}>{label}</AppText></Pressable>;
+  return <Pressable accessibilityRole="button" onPress={onPress} className="h-[54px] min-h-[54px] flex-row items-center justify-center gap-2 rounded-full border-[1.5px] border-brand bg-surface px-4 active:bg-brand-tint" style={style}>{icon}<AppText variant="label" color={colors.deepPurple}>{label}</AppText></Pressable>;
 }
 
 export function Field({ label, error, containerStyle, inputStyle, icon, focusAccent = false, inputRef, onFocus, onBlur, ...props }: TextInputProps & { label: string; error?: string; containerStyle?: ViewStyle; inputStyle?: TextStyle; icon?: ReactNode; focusAccent?: boolean; inputRef?: Ref<TextInput> }) {
@@ -77,14 +84,6 @@ export function StatusBadge({ label, tone = 'purple' }: { label: string; tone?: 
 }
 
 const styles = StyleSheet.create({
-  content: { paddingHorizontal: spacing.page, paddingTop: 14, paddingBottom: 24, gap: 16 },
-  headingRow: { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 4 },
-  headingText: { flex: 1 },
-  back: { height: 40, width: 40, alignItems: 'center', justifyContent: 'center', borderRadius: 13, backgroundColor: colors.lavenderTint },
-  card: { backgroundColor: colors.surface, borderRadius: radius.card, padding: spacing.card, borderWidth: 1, borderColor: colors.border },
-  primaryButton: { height: 54, minHeight: 54, borderRadius: radius.pill, backgroundColor: colors.purple, borderWidth: 1.5, borderColor: colors.purple, paddingHorizontal: 18, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 9 },
-  secondaryButton: { height: 54, minHeight: 54, borderRadius: radius.pill, borderWidth: 1.5, borderColor: colors.purple, backgroundColor: colors.surface, paddingHorizontal: 16, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 },
-  disabled: { opacity: 0.78 },
   field: { gap: 0 },
   inputFrame: { minHeight: 54, flexDirection: 'row', alignItems: 'center', borderWidth: 1, borderColor: colors.border, borderRadius: 16, backgroundColor: colors.surface },
   inputIcon: { width: 42, alignItems: 'center', justifyContent: 'center' },
