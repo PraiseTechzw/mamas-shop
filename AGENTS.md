@@ -45,6 +45,8 @@ Run lint and typecheck before declaring any task done.
 - Follow [`docs/architecture.md`](docs/architecture.md) for the roles of Expo UI, NativeWind, Expo Router, Expo SQLite, and Supabase, plus the offline write and synchronization flow.
 - The approved UI/UX reference is the product source of truth. Check [`docs/design/README.md`](docs/design/README.md) for the design link before implementing screens; do not treat route scaffolds as approved UI.
 - Use Expo UI for suitable native controls and NativeWind for React Native layout/styling. Check SDK 57 platform support for Expo UI components and preserve cross-platform behavior.
+- Use NativeWind `className` utilities for screen layout and visual styling. Reuse the existing Tailwind theme tokens and `src/constants/theme.ts` colors; do not introduce one-off hex colors or change the established palette. Use inline styles only when a value is dynamic or NativeWind cannot express it, and source those values from the shared theme.
+- Preserve the approved screen styling and colors unless the user explicitly asks to change them. Do not add new visual treatments while fixing behavior or navigation.
 - Read and write business data through SQLite repositories. Keep local writes responsive offline and sync through the sync service; feature screens must not directly call Supabase for ordinary business data reads/writes.
 - Sync operations must be idempotent, preserve audit history, and use an explicit per-entity conflict policy. Never silently overwrite financial or inventory events.
 

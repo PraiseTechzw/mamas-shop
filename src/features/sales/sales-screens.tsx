@@ -19,11 +19,9 @@ import {
 } from "@/db/repositories/sales";
 import type {
   Customer,
-  InventoryLocation,
   PaymentMethod,
   Product,
   SaleSummary,
-  Seller,
 } from "@/db/schema";
 import { useAuth } from "@/features/auth/auth-context";
 import { formatDateTime, formatMoney, toCents } from "@/lib/format";
@@ -32,8 +30,11 @@ import { useCart } from "@/stores/cart";
 import { router } from "expo-router";
 import { useSQLiteContext } from "expo-sqlite";
 import {
+  Apple,
+  Boxes,
   Banknote,
   Check,
+  CupSoda,
   ChevronDown,
   ChevronRight,
   CreditCard,
@@ -41,6 +42,7 @@ import {
   Plus,
   ReceiptText,
   Search,
+  ShoppingCart,
   Smartphone,
   Package,
   MapPin,
@@ -63,26 +65,27 @@ import {
 } from "react-native";
 
 function saleCategory(product: Product) {
-  const value = `${product.name} ${product.category}`.toLowerCase();
-  if (/biscuit|cookie/.test(value)) return "Biscuits";
-  if (/snack|snax|crisps|king cos|king kurls/.test(value)) return "Snacks";
-  if (/maheu|mahewu|mahero|drink|beverage|water|mirinda|pepsi|coke|fruiticana/.test(value)) return "Drinks";
-  if (/meat|deli|polony/.test(value)) return "Meat & Deli";
-  if (/airtime|econet|netone/.test(value)) return "Airtime";
-  return "Other";
+  const value = `${product.name} ${product.category}`.toLocaleLowerCase();
+  if (/drink|beverage|water|maheu|mahewu|mahero|juice|soda/.test(value)) return "Drinks";
+  if (/household|clean|soap|detergent|toilet|tissue|personal care|shampoo/.test(value)) return "Household";
+  return "Groceries";
 }
+
+const salesCategoryIcons: Record<string, typeof Boxes> = {
+  All: Boxes,
+  Groceries: Apple,
+  Drinks: CupSoda,
+  Household: Package,
+};
 
 export function SalesScreen() {
   const db = useSQLiteContext();
   const { session, businessId } = useAuth();
   const { revision } = useSyncStatus();
   const ownerId = businessId ?? session?.user.id ?? "";
-  const isShopOwner = Boolean(session && businessId === session.user.id);
   const [rows, setRows] = useState<Product[]>([]);
   const [productLoadError, setProductLoadError] = useState('');
   const [productRetry, setProductRetry] = useState(0);
-  const [locations, setLocations] = useState<InventoryLocation[]>([]);
-  const [sellers, setSellers] = useState<Seller[]>([]);
   const [search, setSearch] = useState("");
   const [category, setCategory] = useState("All");
   const lines = useCart((state) => state.lines);
@@ -96,6 +99,7 @@ export function SalesScreen() {
     (sum, item) => sum + Math.round(item.priceCents * item.quantity),
     0,
   );
+  const itemCount = lines.reduce((count, item) => count + item.quantity, 0);
   useEffect(() => {
     let active = true;
     const ownerName = String(session?.user.user_metadata?.full_name ?? session?.user.email?.split("@")[0] ?? "Shop owner");
@@ -107,8 +111,6 @@ export function SalesScreen() {
         : session ? await ensureUserSeller(db, ownerId, session.user.id, ownerName) : null;
       const [locationRows, sellerRows] = await Promise.all([listLocations(db, ownerId), listSellers(db, ownerId)]);
       if (!active) return;
-      setLocations(locationRows);
-      setSellers(sellerRows);
       if (!locationRows.some((location) => location.id === locationId)) setLocationId(primary?.id ?? locationRows[0]?.id ?? null);
       if (!sellerRows.some((seller) => seller.id === sellerId)) setSellerId(currentSeller?.id ?? null);
     })().catch(() => {});
@@ -126,8 +128,8 @@ export function SalesScreen() {
     };
   }, [db, ownerId, search, locationId, revision, productRetry]);
   const categories = useMemo(
-    () => ["All", ...Array.from(new Set(rows.map(saleCategory)))],
-    [rows],
+    () => ["All", "Groceries", "Drinks", "Household"],
+    [],
   );
   const visibleRows = useMemo(
     () => rows.filter((product) => category === "All" || saleCategory(product) === category),
@@ -135,17 +137,6 @@ export function SalesScreen() {
   );
   return (
     <Page
-      title={creditMode ? "New credit sale" : "Quick sale"}
-      subtitle={
-        creditMode
-          ? "Choose products for this customer account."
-          : "Tap a product to add it to the sale."
-      }
-      right={
-        <Pressable onPress={() => router.push("/sales/history")} hitSlop={8}>
-          <ReceiptText size={21} stroke={colors.purple} />
-        </Pressable>
-      }
       scroll={false}
       contentStyle={styles.salesPage}
     >
@@ -156,34 +147,44 @@ export function SalesScreen() {
         showsVerticalScrollIndicator={false}
       >
       {productLoadError ? <View style={styles.errorBox}><AppText variant="small" color={colors.danger}>{productLoadError}</AppText><Pressable accessibilityRole="button" onPress={()=>setProductRetry((value)=>value+1)}><AppText variant="label" color={colors.deepPurple}>Retry loading products</AppText></Pressable></View> : null}
-      <View style={styles.saleAssignment}>
-        <View style={styles.assignmentRow}><View style={styles.assignmentLabel}><MapPin size={15} stroke={colors.deepPurple}/><AppText variant="small" color={colors.secondary}>Location</AppText></View><ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.assignmentChoices}>{locations.map((location)=><Pressable key={location.id} accessibilityRole="button" accessibilityState={{selected:locationId===location.id}} onPress={()=>setLocationId(location.id)} style={[styles.assignmentChip,locationId===location.id&&styles.assignmentChipActive]}><AppText variant="small" color={locationId===location.id?colors.deepPurple:colors.secondary}>{location.name}</AppText></Pressable>)}</ScrollView></View>
-        {isShopOwner?<View style={styles.assignmentRow}><View style={styles.assignmentLabel}><Users size={15} stroke={colors.deepPurple}/><AppText variant="small" color={colors.secondary}>Seller</AppText></View><ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.assignmentChoices}>{sellers.map((seller)=><Pressable key={seller.id} accessibilityRole="button" accessibilityState={{selected:sellerId===seller.id}} onPress={()=>setSellerId(seller.id)} style={[styles.assignmentChip,sellerId===seller.id&&styles.assignmentChipActive]}><AppText variant="small" color={sellerId===seller.id?colors.deepPurple:colors.secondary}>{seller.name}</AppText></Pressable>)}</ScrollView></View>:null}
-      </View>
-      <Field
-        label=""
-        accessibilityLabel="Search products"
-        icon={<Search size={18} stroke={colors.secondary} />}
-        placeholder="Search products or categories"
-        value={search}
-        onChangeText={setSearch}
-      />
-      <View style={styles.categoryHeader}>
-        <AppText variant="label">Categories</AppText>
-        <StatusBadge label={`${rows.length} in stock`} tone="green" />
+      <View className="w-full flex-row items-center gap-2">
+        <View className="min-w-0 flex-1">
+          <Field
+            label=""
+            accessibilityLabel="Search products"
+            icon={<Search size={18} color={colors.secondary} />}
+            placeholder="Search products…"
+            returnKeyType="search"
+            value={search}
+            onChangeText={setSearch}
+          />
+        </View>
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Sales history"
+          onPress={() => router.push("/sales/history")}
+          className="h-11 w-11 items-center justify-center rounded-2xl border border-line bg-brand-tint active:opacity-80"
+        >
+          <ReceiptText size={18} color={colors.deepPurple} />
+        </Pressable>
       </View>
       <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.categoryFilters}>
-        {categories.map((item) => (
-          <Pressable
-            key={item}
-            accessibilityRole="button"
-            accessibilityState={{ selected: category === item }}
-            onPress={() => setCategory(item)}
-            style={[styles.categoryFilter, category === item && styles.categoryFilterActive]}
-          >
-            <AppText variant="small" color={category === item ? "#FFFFFF" : colors.secondary}>{item}</AppText>
-          </Pressable>
-        ))}
+        {categories.map((item) => {
+          const Icon = salesCategoryIcons[item] ?? Package;
+          const selected = category === item;
+          return (
+            <Pressable
+              key={item}
+              accessibilityRole="button"
+              accessibilityState={{ selected }}
+              onPress={() => setCategory(item)}
+              className={`min-h-9 flex-row items-center justify-center gap-1.5 rounded-full border px-3 ${selected ? 'border-brand bg-brand' : 'border-line bg-surface'}`}
+            >
+              <Icon size={14} color={selected ? colors.surface : colors.secondary} />
+              <AppText variant="small" color={selected ? colors.surface : colors.secondary} style={{ fontSize: 11 }}>{item}</AppText>
+            </Pressable>
+          );
+        })}
       </ScrollView>
       {!visibleRows.length ? (
         <IllustratedEmptyState
@@ -210,7 +211,7 @@ export function SalesScreen() {
           }
         />
       ) : (
-        <View style={styles.productGrid}>
+        <View className="w-full overflow-hidden rounded-2xl border border-line bg-surface">
           {visibleRows.map((product) => {
             const inCart = lines.find((line) => line.productId === product.id);
             return (
@@ -219,38 +220,30 @@ export function SalesScreen() {
                 accessibilityRole="button"
                 accessibilityLabel={`Add ${product.name} to sale, ${formatMoney(product.price_cents)}, ${product.stock_quantity} ${product.unit} in stock`}
                 onPress={() => addProduct(product)}
-                style={({ pressed }) => [
-                  styles.productCard,
-                  pressed && { opacity: 0.86 },
-                ]}
+                className="min-h-[68px] w-full flex-row items-center gap-3 border-b border-line px-3 py-2 active:bg-brand-tint/40"
               >
-                <View style={styles.productArt}>
+                <View className="h-12 w-12 items-center justify-center overflow-hidden rounded-xl bg-canvas">
                   {imageSource(product) ? (
                     <Image
                       source={imageSource(product)!}
                       resizeMode="contain"
-                      style={styles.productImage}
+                      className="h-11 w-11"
                       accessibilityLabel={`${product.name} product photo`}
                     />
                   ) : (
-                    <Package size={23} stroke={colors.deepPurple} />
+                    <Package size={21} color={colors.deepPurple} />
                   )}
                 </View>
-                <View style={styles.productDetails}>
-                  <AppText variant="label" numberOfLines={1}>
+                <View className="min-w-0 flex-1 gap-0.5">
+                  <AppText variant="label" numberOfLines={1} style={{ fontSize: 12 }}>
                     {product.name}
                   </AppText>
-                  <AppText variant="small" color={colors.secondary} numberOfLines={1}>
-                    {saleCategory(product)} · {product.stock_quantity} {product.unit}
+                  <AppText variant="small" color={colors.purple} numberOfLines={1}>
+                    {formatMoney(product.price_cents)}
                   </AppText>
-                  <View style={styles.productBottom}>
-                    <AppText variant="amount" style={{ fontSize: 16 }}>
-                      {formatMoney(product.price_cents)}
-                    </AppText>
-                    <View style={styles.addCircle}>
-                      {inCart ? <AppText variant="small" color="#fff">{inCart.quantity}</AppText> : <Plus size={16} stroke="#fff" />}
-                    </View>
-                  </View>
+                </View>
+                <View className="h-8 w-8 items-center justify-center rounded-full bg-brand">
+                  {inCart ? <AppText variant="label" color={colors.surface} style={{ fontSize: 11 }}>{inCart.quantity}</AppText> : <Plus size={17} color={colors.surface} />}
                 </View>
               </Pressable>
             );
@@ -259,47 +252,21 @@ export function SalesScreen() {
       )}
       </ScrollView>
       {lines.length ? (
-        <Card style={styles.cartPreview}>
-          <View style={styles.cartHead}>
-            <View style={{ flex: 1 }}>
-              <AppText variant="label">
-                Current sale · {lines.length}{" "}
-                {lines.length === 1 ? "item" : "items"}
-              </AppText>
-              {creditMode ? (
-                <AppText
-                  variant="small"
-                  color={colors.warning}
-                  style={{ marginTop: 3 }}
-                >
-                  Credit sale
-                </AppText>
-              ) : null}
-            </View>
-            <AppText variant="amount">{formatMoney(total)}</AppText>
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel={`Review sale with ${itemCount} ${itemCount === 1 ? 'item' : 'items'}, total ${formatMoney(total)}`}
+          onPress={() => router.push("/sales/checkout")}
+          className="min-h-[58px] flex-row items-center gap-3 rounded-2xl bg-brand px-3 py-2 active:opacity-85"
+        >
+          <View className="h-9 w-9 items-center justify-center rounded-xl bg-brand-deep">
+            <ShoppingCart size={20} color={colors.surface} />
           </View>
-          <View style={styles.cartActions}>
-            <Pressable accessibilityRole="button" style={styles.clearCartButton}
-              onPress={() => {
-                useCart.getState().clear();
-              }}
-            >
-              <AppText variant="small" color={colors.danger}>
-                Clear sale
-              </AppText>
-            </Pressable>
-            <Pressable
-              accessibilityRole="button"
-              onPress={() => router.push("/sales/checkout")}
-              style={styles.reviewSaleButton}
-            >
-              <View style={styles.reviewSaleSurface}>
-                <AppText variant="label" color="#FFFFFF">Review sale</AppText>
-                <ChevronRight size={18} stroke="#FFFFFF" />
-              </View>
-            </Pressable>
+          <View className="min-w-0 flex-1">
+            <AppText variant="small" color={colors.surface}>{itemCount} {itemCount === 1 ? 'item' : 'items'}{creditMode ? ' · Credit sale' : ''}</AppText>
+            <AppText variant="label" color={colors.surface}>{formatMoney(total)}</AppText>
           </View>
-        </Card>
+          <ChevronRight size={19} color={colors.surface} />
+        </Pressable>
       ) : null}
     </Page>
   );
@@ -848,12 +815,6 @@ function SaleDetailPanel({ db, ownerId, sale }: { db: ReturnType<typeof useSQLit
 }
 
 const styles = StyleSheet.create({
-  saleAssignment: { gap: 8, padding: 10, borderWidth: 1, borderColor: colors.border, borderRadius: 15, backgroundColor: '#FFFFFF' },
-  assignmentRow: { minHeight: 34, flexDirection: 'row', alignItems: 'center', gap: 8 },
-  assignmentLabel: { width: 76, flexDirection: 'row', alignItems: 'center', gap: 5 },
-  assignmentChoices: { flexDirection: 'row', alignItems: 'center', gap: 7 },
-  assignmentChip: { minHeight: 30, justifyContent: 'center', paddingHorizontal: 10, borderRadius: 12, backgroundColor: '#F1F2F8' },
-  assignmentChipActive: { backgroundColor: colors.lavenderTint },
   saleContextCard: { gap: 9, padding: 12, borderWidth: 1, borderColor: colors.border, borderRadius: 15, backgroundColor: '#FFFFFF' },
   saleContextRow: { minHeight: 24, flexDirection: 'row', alignItems: 'center', gap: 8 },
   saleContextValue: { flex: 1, textAlign: 'right' },
@@ -871,54 +832,9 @@ const styles = StyleSheet.create({
   checkoutProductImage: { width: 66, height: 48 },
   salesPage: { flex: 1 },
   salesScroller: { flex: 1 },
-  salesScrollContent: { gap: 14, paddingBottom: 16 },
-  categoryHeader: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
+  salesScrollContent: { gap: 8, paddingBottom: 12 },
   categoryFilters: { flexDirection: "row", alignItems: "center", gap: 7, paddingVertical: 2 },
-  categoryFilter: { minHeight: 34, justifyContent: "center", paddingHorizontal: 13, borderRadius: 18, backgroundColor: "#F0F1F7" },
-  categoryFilterActive: { backgroundColor: colors.purple },
   empty: { alignItems: "center", gap: 10, padding: 18 },
-  productGrid: { flexDirection: "row", flexWrap: "wrap", gap: 10 },
-  productCard: {
-    width: "48%",
-    minHeight: 154,
-    backgroundColor: "#FFFFFF",
-    borderRadius: 18,
-    borderWidth: 1.25,
-    borderColor: "#D2D6E3",
-    padding: 9,
-    gap: 7,
-    shadowColor: "#25305A",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.08,
-    shadowRadius: 8,
-    elevation: 2,
-  },
-  productArt: {
-    width: "100%",
-    height: 62,
-    backgroundColor: "#FFFFFF",
-    borderRadius: 13,
-    alignItems: "center",
-    justifyContent: "center",
-    overflow: "hidden",
-  },
-  productImage: { width: 58, height: 58 },
-  productDetails: { flex: 1, minWidth: 0, gap: 4 },
-  productBottom: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 6, marginTop: "auto", paddingTop: 4 },
-  addCircle: {
-    width: 32,
-    height: 32,
-    borderRadius: 12,
-    backgroundColor: colors.purple,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  cartPreview: { gap: 12, padding: 14, borderWidth: 1.5, borderColor: "#B9ADEE", backgroundColor: "#FFFFFF", shadowColor: colors.deepPurple, shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.08, shadowRadius: 8, elevation: 2 },
-  cartHead: { flexDirection: "row", alignItems: "center", gap: 8 },
-  cartActions: { flexDirection: "row", alignItems: "center", gap: 10 },
-  clearCartButton: { minHeight: 46, justifyContent: "center", paddingHorizontal: 13, borderRadius: 13, backgroundColor: "#FFF1F2", borderWidth: 1, borderColor: "#F3D5D9" },
-  reviewSaleButton: { flex: 1, minHeight: 50, overflow: "hidden", borderRadius: 14 },
-  reviewSaleSurface: { width: "100%", minHeight: 50, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 7, paddingHorizontal: 14, borderRadius: 14, backgroundColor: "#38239B" },
   orderRow: {
     flexDirection: "row",
     alignItems: "center",

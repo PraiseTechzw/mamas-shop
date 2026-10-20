@@ -8,6 +8,7 @@ module.exports = {
         brand: { DEFAULT: '#5B43D6', deep: '#38239B', soft: '#8B78F0', tint: '#EEEAFB' },
         gold: '#FFC83D',
         canvas: '#F7F7FC',
+        surface: '#FFFFFF',
         ink: '#202033',
         muted: '#74758A',
         line: '#E6E7EF',
