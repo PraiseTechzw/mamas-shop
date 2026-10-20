@@ -2,6 +2,17 @@ import type { SQLiteDatabase } from 'expo-sqlite';
 
 export const DATABASE_VERSION = 10;
 
+async function ensureSyncMetadata(db: SQLiteDatabase) {
+  await db.execAsync('CREATE TABLE IF NOT EXISTS sync_metadata (owner_id TEXT PRIMARY KEY NOT NULL, last_synced_at TEXT);');
+  const columns = await db.getAllAsync<{ name: string }>('PRAGMA table_info(sync_metadata)');
+  if (!columns.some((column) => column.name === 'last_pulled_at')) {
+    await db.execAsync('ALTER TABLE sync_metadata ADD COLUMN last_pulled_at TEXT');
+  }
+  if (!columns.some((column) => column.name === 'last_pulled_key')) {
+    await db.execAsync('ALTER TABLE sync_metadata ADD COLUMN last_pulled_key TEXT');
+  }
+}
+
 export async function migrateDbIfNeeded(db: SQLiteDatabase) {
   const row = await db.getFirstAsync<{ user_version: number }>('PRAGMA user_version');
   let version = row?.user_version ?? 0;
@@ -84,9 +95,9 @@ export async function migrateDbIfNeeded(db: SQLiteDatabase) {
     version = 5;
   }
   if (version < 6) {
-    const syncMetadataColumns = await db.getAllAsync<{ name: string }>('PRAGMA table_info(sync_metadata)');
-    if (!syncMetadataColumns.some((column) => column.name === 'last_pulled_at')) await db.execAsync('ALTER TABLE sync_metadata ADD COLUMN last_pulled_at TEXT');
-    if (!syncMetadataColumns.some((column) => column.name === 'last_pulled_key')) await db.execAsync('ALTER TABLE sync_metadata ADD COLUMN last_pulled_key TEXT');
+    // Repair databases where an earlier migration was marked complete even
+    // though its metadata table was never created.
+    await ensureSyncMetadata(db);
     await db.execAsync(`
       CREATE TABLE IF NOT EXISTS sync_applied_events (
         idempotency_key TEXT PRIMARY KEY NOT NULL,
@@ -158,5 +169,8 @@ export async function migrateDbIfNeeded(db: SQLiteDatabase) {
     `);
     version = 10;
   }
+  // Keep startup safe for databases whose user_version is already current but
+  // whose sync metadata table is missing or incomplete.
+  await ensureSyncMetadata(db);
   await db.execAsync('PRAGMA user_version = ' + Math.min(version, DATABASE_VERSION));
 }

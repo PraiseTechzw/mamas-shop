@@ -240,71 +240,170 @@ function ShopSettingsEditor({ section }: { section: "business" | "currency" }) {
           : "Choose the currency used for shop totals."
       }
       back
+      footer={
+        !loading ? (
+          <View className="gap-2">
+            {error ? (
+              <AppText variant="small" color={colors.danger}>
+                {error}
+              </AppText>
+            ) : null}
+            {message ? (
+              <AppText variant="small" color={colors.success}>
+                {message}
+              </AppText>
+            ) : null}
+            <PrimaryButton
+              label={busy ? "Saving…" : business ? "Save business details" : "Save changes"}
+              loading={busy}
+              onPress={() => void save()}
+            />
+          </View>
+        ) : null
+      }
     >
       {loading ? (
         <Card>
           <AppText color={colors.secondary}>Loading shop settings…</AppText>
         </Card>
-      ) : (
-        <Card style={{ gap: 14 }}>
-          {business ? (
-            <>
-              <AppText variant="heading">Shop profile</AppText>
-              <Field
-                label="Shop name"
-                value={name}
-                onChangeText={(value) => {
-                  setName(value);
-                  setMessage("");
-                }}
-                placeholder="Mama's Shop"
-              />
-              {session?.user.id === owner ? (
-                <Pressable
-                  onPress={() => {
-                    setJoinable((value) => !value);
-                    setMessage("");
-                  }}
-                  style={styles.toggleRow}
-                  accessibilityRole="switch"
-                  accessibilityState={{ checked: joinable }}
-                >
-                  <View style={{ flex: 1, gap: 3 }}>
-                    <AppText variant="label">Let people find and join this shop</AppText>
-                    <AppText variant="small" color={colors.secondary}>
-                      Only your shop name is listed. Shop records stay private until someone joins.
-                    </AppText>
-                  </View>
-                  <StatusBadge
-                    label={joinable ? "Open" : "Private"}
-                    tone={joinable ? "green" : "purple"}
-                  />
-                </Pressable>
-              ) : null}
-              <Pressable
-                onPress={() => {
-                  setAlerts((value) => !value);
-                  setMessage("");
-                }}
-                style={styles.toggleRow}
-                accessibilityRole="switch"
-                accessibilityState={{ checked: alerts }}
-              >
-                <View style={{ flex: 1 }}>
-                  <AppText variant="label">Low stock reminders</AppText>
+      ) : business ? (
+        <View className="gap-4">
+          <View className="overflow-hidden rounded-3xl border border-line bg-surface">
+            <View className="flex-row items-center gap-3 bg-brand px-4 py-4">
+              <View className="h-12 w-12 items-center justify-center rounded-2xl bg-gold">
+                <Store size={23} color={colors.deepPurple} />
+              </View>
+              <View className="min-w-0 flex-1 gap-0.5">
+                <AppText variant="small" color={colors.surface}>BUSINESS PROFILE</AppText>
+                <AppText variant="heading" color={colors.surface} numberOfLines={1}>
+                  {name.trim() || "Your shop"}
+                </AppText>
+              </View>
+            </View>
+            <View className="gap-1 px-4 py-3">
+              <AppText variant="small" color={colors.secondary}>
+                Update how your shop appears and manage who can find it.
+              </AppText>
+            </View>
+          </View>
+
+          <Card className="gap-4">
+            <View className="flex-row items-center gap-3">
+              <View className="h-10 w-10 items-center justify-center rounded-xl bg-brand-tint">
+                <Building2 size={19} color={colors.deepPurple} />
+              </View>
+              <View className="flex-1 gap-0.5">
+                <AppText variant="heading">Shop identity</AppText>
+                <AppText variant="small" color={colors.secondary}>
+                  This name identifies your business in the app.
+                </AppText>
+              </View>
+            </View>
+            <Field
+              label="Shop name"
+              value={name}
+              onChangeText={(value) => {
+                setName(value);
+                setMessage("");
+              }}
+              placeholder="Mama’s Shop"
+              autoCapitalize="words"
+              returnKeyType="done"
+            />
+          </Card>
+
+          {session?.user.id === owner ? (
+            <Card className="gap-3">
+              <View className="flex-row items-center gap-3">
+                <View className="h-10 w-10 items-center justify-center rounded-xl bg-brand-tint">
+                  <Users size={19} color={colors.deepPurple} />
+                </View>
+                <View className="min-w-0 flex-1 gap-0.5">
+                  <AppText variant="heading">Team access</AppText>
                   <AppText variant="small" color={colors.secondary}>
-                    Highlight products that need restocking
+                    Choose whether staff can find this shop.
                   </AppText>
                 </View>
                 <StatusBadge
-                  label={alerts ? "On" : "Off"}
-                  tone={alerts ? "green" : "purple"}
+                  label={joinable ? "Open" : "Private"}
+                  tone={joinable ? "green" : "purple"}
                 />
+              </View>
+              <Pressable
+                onPress={() => {
+                  setJoinable((value) => !value);
+                  setMessage("");
+                }}
+                className={`min-h-16 flex-row items-center gap-3 rounded-2xl border px-3 py-3 ${joinable ? "border-brand bg-brand-tint" : "border-line bg-surface"}`}
+                accessibilityRole="switch"
+                accessibilityState={{ checked: joinable }}
+              >
+                <View className="min-w-0 flex-1 gap-0.5">
+                  <AppText variant="label">
+                    Let people find and join this shop
+                  </AppText>
+                  <AppText variant="small" color={colors.secondary}>
+                    Only the shop name is listed. Your records remain private.
+                  </AppText>
+                </View>
+                <View
+                  className={`h-7 w-12 justify-center rounded-full px-1 ${joinable ? "bg-brand" : "bg-line"}`}
+                >
+                  <View
+                    className={`h-5 w-5 rounded-full ${joinable ? "self-end bg-gold" : "self-start bg-surface"}`}
+                  />
+                </View>
               </Pressable>
-            </>
-          ) : (
-            <>
-              <AppText variant="heading">Shop currency</AppText>
+              <View className="flex-row items-start gap-2 rounded-xl bg-gold/15 px-3 py-2.5">
+                <Info size={16} color={colors.deepPurple} />
+                <AppText variant="small" color={colors.deepPurple} style={{ flex: 1 }}>
+                  {joinable
+                    ? "Your shop will appear in the Join a shop list after you save."
+                    : "Your shop is hidden from staff discovery until you turn this on and save."}
+                </AppText>
+              </View>
+            </Card>
+          ) : null}
+
+          <Card className="gap-3">
+            <View className="flex-row items-center gap-3">
+              <View className="h-10 w-10 items-center justify-center rounded-xl bg-brand-tint">
+                <Package size={19} color={colors.deepPurple} />
+              </View>
+              <View className="min-w-0 flex-1 gap-0.5">
+                <AppText variant="heading">Stock reminders</AppText>
+                <AppText variant="small" color={colors.secondary}>
+                  Get a visual reminder when products need restocking.
+                </AppText>
+              </View>
+              <StatusBadge
+                label={alerts ? "On" : "Off"}
+                tone={alerts ? "green" : "purple"}
+              />
+            </View>
+            <Pressable
+              onPress={() => {
+                setAlerts((value) => !value);
+                setMessage("");
+              }}
+              className={`min-h-12 flex-row items-center justify-between rounded-2xl border px-3 ${alerts ? "border-brand bg-brand-tint" : "border-line bg-surface"}`}
+              accessibilityRole="switch"
+              accessibilityState={{ checked: alerts }}
+            >
+              <AppText variant="label">Low stock reminders</AppText>
+              <View
+                className={`h-7 w-12 justify-center rounded-full px-1 ${alerts ? "bg-brand" : "bg-line"}`}
+              >
+                <View
+                  className={`h-5 w-5 rounded-full ${alerts ? "self-end bg-gold" : "self-start bg-surface"}`}
+                />
+              </View>
+            </Pressable>
+          </Card>
+        </View>
+      ) : (
+        <Card style={{ gap: 14 }}>
+          <AppText variant="heading">Shop currency</AppText>
               <AppText variant="small" color={colors.secondary}>
                 Existing amounts remain unchanged; new totals use this currency.
               </AppText>
@@ -353,23 +452,6 @@ function ShopSettingsEditor({ section }: { section: "business" | "currency" }) {
                   </AppText>
                 </View>
               </View>
-            </>
-          )}
-          {error ? (
-            <AppText variant="small" color={colors.danger}>
-              {error}
-            </AppText>
-          ) : null}
-          {message ? (
-            <AppText variant="small" color={colors.success}>
-              {message}
-            </AppText>
-          ) : null}
-          <PrimaryButton
-            label={busy ? "Saving…" : "Save changes"}
-            loading={busy}
-            onPress={() => void save()}
-          />
         </Card>
       )}
     </Page>
@@ -1291,12 +1373,6 @@ const styles = StyleSheet.create({
   selected: {
     borderColor: colors.purple,
     backgroundColor: colors.lavenderTint,
-  },
-  toggleRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 12,
-    paddingVertical: 8,
   },
   settingsRow: {
     minHeight: 66,
