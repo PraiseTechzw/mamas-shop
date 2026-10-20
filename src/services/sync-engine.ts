@@ -18,6 +18,28 @@ export type SyncResult = { synced: number; downloaded: number; pending: number; 
 
 const BATCH_SIZE = 50;
 
+function describeSyncError(error: unknown) {
+  if (typeof error === 'string') return error.slice(0, 500);
+  if (error && typeof error === 'object') {
+    const value = error as Record<string, unknown>;
+    const message = typeof value.message === 'string'
+      ? value.message
+      : error instanceof Error ? error.message : '';
+    const code = typeof value.code === 'string' ? `Code: ${value.code}` : '';
+    const details = typeof value.details === 'string' ? value.details : '';
+    const hint = typeof value.hint === 'string' ? `Hint: ${value.hint}` : '';
+    const description = [message, code, details, hint].filter(Boolean).join(' · ');
+    if (description) return description.slice(0, 500);
+    if (error instanceof Error) return `${error.name}: ${error.message}`.slice(0, 500);
+    try {
+      return JSON.stringify(error).slice(0, 500);
+    } catch {
+      return 'Sync failed with an unreadable error object.';
+    }
+  }
+  return 'Sync failed.';
+}
+
 /** Local tables that carry a sync_state column, keyed by outbox entity type. Table names are static literals. */
 const SYNCED_STATE_TABLES: Record<string, string> = {
   sale: 'sales',
@@ -76,7 +98,15 @@ export async function syncOutbox(db: SQLiteDatabase, ownerId: string, force = fa
       const attempt = row.attempt_count + 1;
       const delayMs = Math.min(60 * 60 * 1000, 5_000 * 2 ** Math.min(attempt - 1, 10));
       const retryAt = new Date(Date.now() + delayMs).toISOString();
-      const message = error instanceof Error ? error.message.slice(0, 500) : 'Sync failed.';
+      const message = describeSyncError(error);
+      console.error('[sync] Upload failed', {
+        operation: row.operation,
+        entityType: row.entity_type,
+        idempotencyKey: row.idempotency_key,
+        attempt,
+        error,
+        errorMessage: message,
+      });
       await db.runAsync('UPDATE sync_outbox SET attempt_count = ?, last_error = ?, next_attempt_at = ? WHERE id = ? AND owner_id = ?', attempt, message, retryAt, row.id, ownerId);
       failed += 1;
     }
@@ -86,8 +116,9 @@ export async function syncOutbox(db: SQLiteDatabase, ownerId: string, force = fa
   let pullFailed = false;
   try {
     downloaded = await pullRemoteEvents(db, ownerId);
-  } catch {
+  } catch (error) {
     // A failed read never advances the cursor; the next online retry safely fetches the same page.
+    console.error('[sync] Could not fetch remote changes', error);
     pullFailed = true;
   }
 
@@ -129,6 +160,12 @@ async function pullRemoteEvents(db: SQLiteDatabase, ownerId: string) {
         downloaded += 1;
       } catch (value) {
         const description = value instanceof Error ? value.message.slice(0, 500) : 'Remote change could not be applied safely.';
+        console.warn('[sync] Incoming change deferred for review', {
+          operation: event.operation,
+          entityType: event.entity_type,
+          idempotencyKey: event.idempotency_key,
+          error: description,
+        });
         await db.withTransactionAsync(async () => {
           await db.runAsync('INSERT OR IGNORE INTO sync_conflicts (idempotency_key, owner_id, description, created_at, payload_json) VALUES (?, ?, ?, ?, ?)', event.idempotency_key, ownerId, description, new Date().toISOString(), JSON.stringify(event));
           await db.runAsync('INSERT OR IGNORE INTO sync_applied_events (idempotency_key, owner_id, applied_at) VALUES (?, ?, ?)', event.idempotency_key, ownerId, new Date().toISOString());

@@ -846,6 +846,31 @@ export function SyncSettingsScreen() {
   } = useSyncStatus();
   const [checkingConnection, setCheckingConnection] = useState(false);
   const [connectionError, setConnectionError] = useState("");
+  const [uploadErrors, setUploadErrors] = useState<{
+    operation: string;
+    entity_type: string;
+    last_error: string;
+    attempt_count: number;
+  }[]>([]);
+  useEffect(() => {
+    let active = true;
+    void db.getAllAsync<{
+      operation: string;
+      entity_type: string;
+      last_error: string;
+      attempt_count: number;
+    }>(
+      "SELECT operation, entity_type, last_error, attempt_count FROM sync_outbox WHERE owner_id = ? AND last_error IS NOT NULL ORDER BY created_at DESC LIMIT 10",
+      ownerId,
+    ).then((rows) => {
+      if (active) setUploadErrors(rows);
+    }).catch(() => {
+      if (active) setUploadErrors([]);
+    });
+    return () => {
+      active = false;
+    };
+  }, [db, ownerId, failed, pending, syncing]);
   const checkConnectionNow = async () => {
     setCheckingConnection(true);
     setConnectionError("");
@@ -978,6 +1003,9 @@ export function SyncSettingsScreen() {
           : failed
             ? `${failed} change${failed === 1 ? "" : "s"} could not upload yet. The app will retry when a connection is available.`
           : "Changes sync for your signed-in shop. Financial and stock history is kept as individual events.";
+  const distinctUploadErrors = [
+    ...new Map(uploadErrors.map((row) => [row.last_error, row])).values(),
+  ].slice(0, 3);
 
   return (
     <Page
@@ -1008,13 +1036,6 @@ export function SyncSettingsScreen() {
               Last successful sync · {formatDateTime(lastSyncedAt)}
             </AppText>
           ) : null}
-          <PrimaryButton
-            label={syncing ? "Syncing…" : "Sync now"}
-            loading={syncing}
-            disabled={connection !== "online" || Boolean(unavailable)}
-            onPress={() => void syncNow(true)}
-            style={{ alignSelf: "stretch" }}
-          />
         </View>
         <View className="flex-row gap-2">
           <SyncCount label="Waiting" count={pending} tone="amber" />
@@ -1029,6 +1050,39 @@ export function SyncSettingsScreen() {
             tone={conflicts ? "red" : "green"}
           />
         </View>
+        <PrimaryButton
+          label={syncing ? "Syncing…" : failed > 0 ? "Retry sync now" : "Sync now"}
+          loading={syncing}
+          disabled={connection !== "online" || Boolean(unavailable)}
+          onPress={() => void syncNow(true)}
+        />
+      {failed > 0 ? (
+        <View className="gap-3 rounded-2xl border border-danger/20 bg-surface p-4">
+          <View className="flex-row items-center gap-2">
+            <CircleHelp size={18} color={colors.danger} />
+            <AppText variant="label" color={colors.danger}>
+              Why uploads are retrying
+            </AppText>
+          </View>
+          <AppText variant="small" color={colors.secondary} style={{ lineHeight: 20 }}>
+            These changes are still saved on this device and remain in the upload queue. They are not in the cloud yet.
+          </AppText>
+          {distinctUploadErrors.length ? distinctUploadErrors.map((row) => (
+            <View key={row.last_error} className="gap-1 rounded-xl bg-danger/10 p-3">
+              <AppText variant="small" color={colors.deepPurple}>
+                {row.entity_type} · {row.operation} · {row.attempt_count} {row.attempt_count === 1 ? "attempt" : "attempts"}
+              </AppText>
+              <AppText variant="small" color={colors.secondary} style={{ lineHeight: 19 }}>
+                {row.last_error}
+              </AppText>
+            </View>
+          )) : (
+            <AppText variant="small" color={colors.secondary}>
+              No saved error detail is available. Use Sync now to retry and refresh the status.
+            </AppText>
+          )}
+        </View>
+      ) : null}
       </View>
       {conflicts ? (
         <SyncConflictReview
@@ -1045,10 +1099,10 @@ export function SyncSettingsScreen() {
           <View className="min-w-0 flex-1 gap-0.5">
             <AppText variant="label">On this device</AppText>
             <AppText variant="small" color={colors.secondary}>
-              Local records stay available offline
+              {pending > 0 ? "Saved here · waiting for cloud sync" : "Local records stay available offline"}
             </AppText>
           </View>
-          <StatusBadge label="Saved" tone="green" />
+          <StatusBadge label={pending > 0 ? "On device" : "Saved"} tone={pending > 0 ? "amber" : "green"} />
         </View>
         <View className="h-px bg-line" />
         <View className="flex-row items-center gap-3">
