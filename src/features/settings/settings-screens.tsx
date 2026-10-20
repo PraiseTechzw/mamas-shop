@@ -1175,8 +1175,9 @@ function SyncConflictReview({
         color={colors.secondary}
         style={{ lineHeight: 20 }}
       >
-        Stock conflicts stay here instead of overwriting a newer count or
-        allowing negative stock. Fix the source issue, then retry.
+        Sync retries changes automatically when their missing records arrive.
+        If a stock change still conflicts with newer inventory, resolve it on
+        the original device, then retry.
       </AppText>
       <PrimaryButton
         label={busy ? "Retrying…" : "Retry unresolved changes"}
