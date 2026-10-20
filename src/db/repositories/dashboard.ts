@@ -5,6 +5,8 @@ import { getOpenChangeOwedTotal } from './sales';
 export type DashboardData = {
   salesTodayCents: number;
   salesTodayCount: number;
+  /** Revenue less the cost snapshots stored on today's sale lines. */
+  grossProfitTodayCents: number;
   salesYesterdayCents: number;
   salesYesterdayCount: number;
   cashReceivedTodayCents: number;
@@ -48,6 +50,13 @@ export async function getDashboardData(db: SQLiteDatabase, ownerId: string): Pro
     'SELECT COALESCE(SUM(total_cents), 0) AS value, COUNT(*) AS count FROM sales WHERE owner_id = ? AND created_at >= ? AND created_at < ?',
     ownerId, yesterdayStart, todayStart,
   );
+  const grossProfitToday = await db.getFirstAsync<{ value: number }>(`
+    SELECT COALESCE(SUM(si.line_total_cents - CAST(ROUND(si.unit_cost_cents * si.quantity) AS INTEGER)), 0) AS value
+    FROM sales s
+    JOIN sale_items si ON si.sale_id = s.id
+    WHERE s.owner_id = ? AND s.created_at >= ? AND s.created_at < ?`,
+    ownerId, todayStart, todayEnd,
+  );
   const cashPayments = await db.getFirstAsync<{ value: number; count: number }>(
     "SELECT COALESCE(SUM(amount_cents), 0) AS value, COUNT(*) AS count FROM payments WHERE owner_id = ? AND method = 'CASH' AND created_at >= ? AND created_at < ?",
     ownerId, todayStart, todayEnd,
@@ -78,6 +87,7 @@ export async function getDashboardData(db: SQLiteDatabase, ownerId: string): Pro
   return {
     salesTodayCents: sales?.value ?? 0,
     salesTodayCount: sales?.count ?? 0,
+    grossProfitTodayCents: grossProfitToday?.value ?? 0,
     salesYesterdayCents: salesYesterday?.value ?? 0,
     salesYesterdayCount: salesYesterday?.count ?? 0,
     cashReceivedTodayCents: cashPayments?.value ?? 0,

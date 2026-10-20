@@ -43,6 +43,7 @@ import { useCart } from '@/stores/cart';
 const emptyData: DashboardData = {
   salesTodayCents: 0,
   salesTodayCount: 0,
+  grossProfitTodayCents: 0,
   salesYesterdayCents: 0,
   salesYesterdayCount: 0,
   cashReceivedTodayCents: 0,
@@ -316,6 +317,16 @@ export function DashboardScreen() {
               valueDanger={data.changeOwedOpenCents > 0}
             />
           </View>
+        </View>
+
+        <View className="flex-row gap-2.5">
+          <MetricCard
+            title="Estimated Gross Profit"
+            value={formatMoney(data.grossProfitTodayCents)}
+            detail="Estimate · before expenses and tax"
+            icon={<ChartNoAxesColumnIncreasing size={16} color={colors.deepPurple} />}
+            iconBg="bg-gold/20"
+          />
         </View>
 
         {/* ── Alerts ── */}

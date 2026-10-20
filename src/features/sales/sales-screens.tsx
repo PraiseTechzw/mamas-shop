@@ -356,6 +356,19 @@ export function DailySummaryScreen() {
               );
             })}
           </View>
+          <View className="flex-row items-center justify-between gap-3 rounded-2xl bg-brand-tint px-3 py-3">
+            <View className="min-w-0 flex-1 gap-0.5">
+              <AppText variant="label" color={colors.deepPurple}>
+                Estimated gross profit today
+              </AppText>
+              <AppText variant="small" color={colors.secondary}>
+                Before expenses and tax; older sales may not include cost data
+              </AppText>
+            </View>
+            <AppText variant="amount" color={colors.deepPurple} style={{ fontSize: 18 }} numberOfLines={1}>
+              {formatMoney(summary?.grossProfitTodayCents ?? 0)}
+            </AppText>
+          </View>
         </Card>
 
         <View style={{ flexDirection: "row", gap: 10 }}>
