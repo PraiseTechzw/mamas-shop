@@ -223,14 +223,14 @@ export function DailySummaryScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState("");
 
-  const load = useCallback(async () => {
-    setRefreshing(true);
-    setError("");
+  const load = useCallback(async (showRefreshing = true) => {
+    if (showRefreshing) setRefreshing(true);
     try {
       const [nextSummary, nextPayments] = await Promise.all([
         getDashboardData(db, ownerId),
         getDailyPaymentBreakdown(db, ownerId),
       ]);
+      setError("");
       setSummary(nextSummary);
       setPayments(nextPayments);
     } catch (reason) {
@@ -246,7 +246,8 @@ export function DailySummaryScreen() {
   }, [db, ownerId]);
 
   useEffect(() => {
-    void load();
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- load(false) updates state after its SQLite reads settle.
+    void load(false);
   }, [load, revision]);
 
   const total = summary?.salesTodayCents ?? 0;

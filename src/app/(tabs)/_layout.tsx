@@ -1,5 +1,5 @@
 import { Redirect, Tabs } from 'expo-router';
-import { Ellipsis, House, Package, ReceiptText, Users } from 'lucide-react-native';
+import { House, Package, ReceiptText, Settings, Users } from 'lucide-react-native';
 import { StyleSheet, View, type ColorValue } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { colors } from '@/constants/theme';
@@ -27,7 +27,7 @@ export default function TabsLayout() {
     <Tabs.Screen name="sales" options={{ title: 'Sales', tabBarIcon: tabBarIcon(ReceiptText) }} />
     <Tabs.Screen name="inventory" options={{ title: 'Inventory', tabBarIcon: tabBarIcon(Package) }} />
     <Tabs.Screen name="credit" options={{ title: 'Customers', tabBarIcon: tabBarIcon(Users) }} />
-    <Tabs.Screen name="more" options={{ title: 'More', tabBarIcon: tabBarIcon(Ellipsis) }} />
+    <Tabs.Screen name="more" options={{ title: 'Settings', tabBarIcon: tabBarIcon(Settings) }} />
   </Tabs>;
 }
 
