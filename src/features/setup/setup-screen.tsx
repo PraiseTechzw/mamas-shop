@@ -214,7 +214,7 @@ export function ShopSetupScreen() {
           label={ctaLabel}
           loading={busy}
           onPress={handleCtaPress}
-          icon={step === 1 ? <ChevronRight size={18} stroke="#FFFFFF" /> : <WandSparkles size={17} stroke="#FFFFFF" />}
+          icon={step === 1 ? <ChevronRight size={18} stroke={colors.surface} /> : <WandSparkles size={17} stroke={colors.surface} />}
           disabled={ctaDisabled}
           onLayout={(event) => {
             if (__DEV__) console.log('[ShopSetup] CTA layout', event.nativeEvent.layout);
@@ -249,7 +249,7 @@ export function ShopSetupScreen() {
           loading={busy}
           disabled={ctaDisabled}
           onPress={handleCtaPress}
-          icon={step === 1 ? <ChevronRight size={18} stroke="#FFFFFF" /> : <Check size={17} stroke="#FFFFFF" />}
+          icon={step === 1 ? <ChevronRight size={18} stroke={colors.surface} /> : <Check size={17} stroke={colors.surface} />}
           onLayout={(event) => {
             if (__DEV__) console.log('[ShopSetup] CTA layout', event.nativeEvent.layout);
           }}

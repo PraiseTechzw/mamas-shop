@@ -359,10 +359,10 @@ export function DailySummaryScreen() {
           <Pressable
             accessibilityRole="button"
             onPress={() => router.push("/(tabs)/inventory")}
-            style={[st.summaryAlert, { backgroundColor: "#F6F8FF" }]}
+            style={[st.summaryAlert, { backgroundColor: colors.surface }]}
           >
-            <View style={[st.summaryAlertIcon, { backgroundColor: "#FCEBED" }]}>
-              <Boxes size={16} color={colors.danger} />
+            <View style={[st.summaryAlertIcon, { backgroundColor: colors.warningTint }]}>
+              <Boxes size={16} color={colors.warning} />
             </View>
             <View style={{ flex: 1 }}>
               <AppText variant="small" color={colors.secondary}>
@@ -377,10 +377,10 @@ export function DailySummaryScreen() {
           <Pressable
             accessibilityRole="button"
             onPress={() => router.push("/(tabs)/credit")}
-            style={[st.summaryAlert, { backgroundColor: "#F6F8FF" }]}
+            style={[st.summaryAlert, { backgroundColor: colors.surface }]}
           >
-            <View style={[st.summaryAlertIcon, { backgroundColor: "#EAF2FF" }]}>
-              <Users size={16} color={colors.info} />
+            <View style={[st.summaryAlertIcon, { backgroundColor: colors.lavenderTint }]}>
+              <Users size={16} color={colors.purple} />
             </View>
             <View style={{ flex: 1 }}>
               <AppText variant="small" color={colors.secondary}>

@@ -21,7 +21,7 @@ export function Card({ children, style, className }: PropsWithChildren<{ style?:
 }
 
 export function PrimaryButton({ label, onPress, disabled, loading, icon, style, onLayout }: { label: string; onPress: () => void; disabled?: boolean; loading?: boolean; icon?: ReactNode; style?: ViewStyle; onLayout?: (event: LayoutChangeEvent) => void }) {
-  return <Pressable onLayout={onLayout} accessibilityRole="button" accessibilityState={{ disabled: disabled || loading, busy: loading }} onPress={onPress} disabled={disabled || loading} style={[styles.primaryButton, style, (disabled || loading) && styles.disabled]}>{loading ? <ActivityIndicator color="#FFFFFF" size="small" /> : icon}<AppText variant="label" color="#FFFFFF">{label}</AppText></Pressable>;
+  return <Pressable onLayout={onLayout} accessibilityRole="button" accessibilityState={{ disabled: disabled || loading, busy: loading }} onPress={onPress} disabled={disabled || loading} style={[styles.primaryButton, style, (disabled || loading) && styles.disabled]}>{loading ? <ActivityIndicator color={colors.surface} size="small" /> : icon}<AppText variant="label" color={colors.surface}>{label}</AppText></Pressable>;
 }
 
 export function SecondaryButton({ label, onPress, style, icon }: { label: string; onPress: () => void; style?: ViewStyle; icon?: ReactNode }) {
@@ -31,9 +31,9 @@ export function SecondaryButton({ label, onPress, style, icon }: { label: string
 export function Field({ label, error, containerStyle, inputStyle, icon, focusAccent = false, inputRef, onFocus, onBlur, ...props }: TextInputProps & { label: string; error?: string; containerStyle?: ViewStyle; inputStyle?: TextStyle; icon?: ReactNode; focusAccent?: boolean; inputRef?: Ref<TextInput> }) {
   const [focusProgress] = useState(() => new Animated.Value(0));
   const focusStyle = focusAccent ? {
-    borderColor: focusProgress.interpolate({ inputRange: [0, 1], outputRange: [colors.border, '#E6AF00'] }),
-    backgroundColor: focusProgress.interpolate({ inputRange: [0, 1], outputRange: [colors.surface, '#FFFCF1'] }),
-    shadowColor: '#F2B500',
+    borderColor: focusProgress.interpolate({ inputRange: [0, 1], outputRange: [colors.border, colors.gold] }),
+    backgroundColor: focusProgress.interpolate({ inputRange: [0, 1], outputRange: [colors.surface, colors.lavenderTint] }),
+    shadowColor: colors.gold,
     shadowOpacity: focusProgress.interpolate({ inputRange: [0, 1], outputRange: [0, 0.28] }),
     shadowRadius: 8,
     shadowOffset: { width: 0, height: 0 },
@@ -44,7 +44,7 @@ export function Field({ label, error, containerStyle, inputStyle, icon, focusAcc
       {icon ? <View pointerEvents="none" style={styles.inputIcon}>{icon}</View> : null}
       <TextInput
         ref={inputRef}
-        placeholderTextColor="#9A9AAC"
+        placeholderTextColor={colors.secondary}
         underlineColorAndroid="transparent"
         {...props}
         onFocus={(event) => {
@@ -71,7 +71,7 @@ export function LoadingScreen({ label = 'Getting things ready…' }: { label?: s
 }
 
 export function StatusBadge({ label, tone = 'purple' }: { label: string; tone?: 'purple' | 'green' | 'amber' | 'red' | 'blue' }) {
-  const tones = { purple: [colors.lavenderTint, colors.deepPurple], green: ['#E7F5EF', colors.success], amber: ['#FFF5DC', colors.warning], red: ['#FCEBED', colors.danger], blue: ['#EAF2FF', colors.info] } as const;
+  const tones = { purple: [colors.lavenderTint, colors.deepPurple], green: [colors.successTint, colors.success], amber: [colors.warningTint, colors.warning], red: [colors.dangerTint, colors.danger], blue: [colors.infoTint, colors.info] } as const;
   const selected = tones[tone];
   return <View style={{ backgroundColor: selected[0], paddingHorizontal: 10, paddingVertical: 6, borderRadius: radius.chip, alignSelf: 'flex-start' }}><AppText variant="small" color={selected[1]}>{label}</AppText></View>;
 }

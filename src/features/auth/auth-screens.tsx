@@ -22,7 +22,7 @@ function AuthButton({ label, onPress, variant = 'primary', loading = false, icon
   const primary = variant === 'primary';
   return <Pressable accessibilityRole="button" onPress={onPress} disabled={loading} style={({ pressed }) => [styles.buttonTouchArea, pressed && !loading && styles.buttonPressed]}>
     <View style={[styles.authButton, primary ? styles.primaryAction : styles.secondaryAction, loading && styles.buttonDisabled]}>
-      {loading ? <ActivityIndicator size="small" color={primary ? '#FFFFFF' : colors.deepPurple} /> : <><AppText variant="label" color={primary ? '#FFFFFF' : colors.deepPurple} style={styles.actionLabel}>{label}</AppText>{icon}</>}
+      {loading ? <ActivityIndicator size="small" color={primary ? colors.surface : colors.deepPurple} /> : <><AppText variant="label" color={primary ? colors.surface : colors.deepPurple} style={styles.actionLabel}>{label}</AppText>{icon}</>}
     </View>
   </Pressable>;
 }
@@ -32,7 +32,7 @@ function ZimbabweFooter() {
 }
 
 function WelcomeWave() {
-  return <Svg width="100%" height={52} viewBox="0 0 400 42" preserveAspectRatio="none" accessibilityLabel="Blue and yellow brand wave">
+  return <Svg width="100%" height={52} viewBox="0 0 400 42" preserveAspectRatio="none" accessibilityLabel="Purple and gold brand wave">
     <Path d="M0 4 C55 31 112 39 198 38 C282 37 345 23 400 0 L400 42 L0 42 Z" fill={colors.gold} />
     <Path d="M0 13 C60 38 118 42 200 41 C285 40 348 28 400 8 L400 42 L0 42 Z" fill={colors.purple} />
   </Svg>;
@@ -44,12 +44,12 @@ function StorefrontHero() {
       <Svg pointerEvents="none" width="100%" height="100%" viewBox="0 0 400 300" preserveAspectRatio="none" style={StyleSheet.absoluteFill}>
         <Defs>
           <LinearGradient id="storefrontFadeTop" x1="0" y1="0" x2="0" y2="1">
-            <Stop offset="0" stopColor="#FCFDFF" stopOpacity="1" />
-            <Stop offset="1" stopColor="#FCFDFF" stopOpacity="0" />
+            <Stop offset="0" stopColor={colors.surface} stopOpacity="1" />
+            <Stop offset="1" stopColor={colors.surface} stopOpacity="0" />
           </LinearGradient>
           <LinearGradient id="storefrontFadeBottom" x1="0" y1="0" x2="0" y2="1">
-            <Stop offset="0" stopColor="#FCFDFF" stopOpacity="0" />
-            <Stop offset="1" stopColor="#FCFDFF" stopOpacity="1" />
+            <Stop offset="0" stopColor={colors.surface} stopOpacity="0" />
+            <Stop offset="1" stopColor={colors.surface} stopOpacity="1" />
           </LinearGradient>
         </Defs>
         <Rect x="0" y="0" width="400" height="68" fill="url(#storefrontFadeTop)" />
@@ -76,11 +76,11 @@ export function WelcomeScreen() {
   return <SafeAreaView className="flex-1" style={styles.welcomeCanvas} edges={['top', 'bottom']}>
     <ScrollView className="flex-1" style={styles.welcomeCanvas} contentContainerStyle={styles.welcome}>
       <BrandHeader />
-      <AppText variant="small" color="#536B91" style={styles.welcomePromise}>Quality products  •  Fair prices  •{ '\n' }Serving our community</AppText>
+      <AppText variant="small" color={colors.secondary} style={styles.welcomePromise}>Quality products  •  Fair prices  •{ '\n' }Serving our community</AppText>
       <WelcomeBenefits />
       <StorefrontHero />
       <View style={styles.welcomeActions}>
-        <AuthButton label="Get Started" icon={<ArrowRight size={21} color="#FFFFFF" />} onPress={() => router.push('/(auth)/login')} />
+        <AuthButton label="Get Started" icon={<ArrowRight size={21} color={colors.surface} />} onPress={() => router.push('/(auth)/login')} />
         <AuthButton label="Log In" variant="secondary" onPress={() => router.push('/(auth)/login')} />
       </View>
       <ZimbabweFooter />
@@ -226,7 +226,7 @@ export function LoginScreen() {
 }
 
 const styles = StyleSheet.create({
-  welcomeCanvas: { backgroundColor: '#FCFDFF' },
+  welcomeCanvas: { backgroundColor: colors.background },
   welcome: { flexGrow: 1, justifyContent: 'flex-start', paddingHorizontal: 22, paddingTop: 8, paddingBottom: 62, gap: 8 },
   brandBlock: { alignItems: 'center', gap: 4, alignSelf: 'stretch' },
   welcomeLogo: { width: '80%', aspectRatio: 2.34, maxHeight: 122, alignSelf: 'center' },
@@ -262,7 +262,7 @@ const styles = StyleSheet.create({
   passwordInput: { paddingRight: 48 },
   forgotButton: { alignSelf: 'flex-end', marginTop: -5, paddingVertical: 3 },
   configMessage: { lineHeight: 18, textAlign: 'center' },
-  errorBox: { borderRadius: 12, padding: 12, backgroundColor: '#FCEBED' },
-  noticeBox: { borderRadius: 12, padding: 12, backgroundColor: '#E7F5EF' },
+  errorBox: { borderRadius: 12, padding: 12, backgroundColor: colors.dangerTint },
+  noticeBox: { borderRadius: 12, padding: 12, backgroundColor: colors.successTint },
   switchRow: { flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 6, paddingTop: 2 },
 });

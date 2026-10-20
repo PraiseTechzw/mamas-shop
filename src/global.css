@@ -21,7 +21,9 @@
 
   /* Status colors */
   --color-success: #16865d;
+  --color-success-tint: #e7f5ef;
   --color-warning: #d97706;
+  --color-warning-tint: #fff5dc;
   --color-danger: #dc3545;
   --color-info: #2474e5;
 

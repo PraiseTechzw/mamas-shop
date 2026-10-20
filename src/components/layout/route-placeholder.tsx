@@ -1,4 +1,5 @@
 import { StyleSheet, Text, View } from 'react-native';
+import { colors } from '@/constants/theme';
 
 type RoutePlaceholderProps = {
   title: string;
@@ -19,16 +20,16 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     padding: 24,
-    backgroundColor: '#fff',
+    backgroundColor: colors.background,
   },
   title: {
-    color: '#17231d',
+    color: colors.deepPurple,
     fontSize: 24,
     fontWeight: '700',
   },
   description: {
     marginTop: 8,
-    color: '#647067',
+    color: colors.secondary,
     fontSize: 15,
     textAlign: 'center',
   },
