@@ -707,7 +707,7 @@ export function SalesHistoryScreen() {
       scroll={false}
       contentStyle={styles.historyPage}
       right={
-        <Pressable accessibilityRole="button" accessibilityLabel="Start a new sale" onPress={() => router.push("/sales/new")} style={styles.historyAddButton}>
+        <Pressable accessibilityRole="button" accessibilityLabel="Start a new sale" onPress={() => router.push("/(tabs)/sales")} style={styles.historyAddButton}>
           <Plus size={20} stroke={colors.deepPurple} />
         </Pressable>
       }
@@ -779,7 +779,7 @@ export function SalesHistoryScreen() {
             action={
               <PrimaryButton
                 label={sales.length ? "Clear filters" : "Start a sale"}
-                onPress={sales.length ? () => { setSearch(""); setFilter("ALL"); } : () => router.push("/sales/new")}
+                onPress={sales.length ? () => { setSearch(""); setFilter("ALL"); } : () => router.push("/(tabs)/sales")}
               />
             }
           />

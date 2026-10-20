@@ -1,13 +1,13 @@
-import { createContext, useCallback, useContext, useEffect, useMemo, useState, type PropsWithChildren } from 'react';
+import { createContext, useContext, useEffect, useMemo, useState, type PropsWithChildren } from 'react';
 import type { Session } from '@supabase/supabase-js';
 import { hasSupabaseConfig, supabase } from '@/lib/supabase';
 import { useSQLiteContext } from 'expo-sqlite';
 import { getShopSettings } from '@/db/repositories/settings';
 import { setAppCurrency } from '@/lib/format';
-import { persistBusinessScope } from '@/services/business-membership';
+import { persistBusinessScope } from '@/services/business-scope';
 
-type AuthContextValue = { session: Session | null; businessId: string | null; loading: boolean; configured: boolean; setBusinessId: (businessId: string) => Promise<void> };
-const AuthContext = createContext<AuthContextValue>({ session: null, businessId: null, loading: true, configured: false, setBusinessId: async () => {} });
+type AuthContextValue = { session: Session | null; businessId: string | null; loading: boolean; configured: boolean };
+const AuthContext = createContext<AuthContextValue>({ session: null, businessId: null, loading: true, configured: false });
 
 export function AuthProvider({ children }: PropsWithChildren) {
   const db = useSQLiteContext();
@@ -47,14 +47,9 @@ export function AuthProvider({ children }: PropsWithChildren) {
     })().catch(() => { if (active) setBusinessLoading(false); });
     return () => { active = false; };
   }, [db, session?.user.id]);
-  const setBusinessId = useCallback(async (nextBusinessId: string) => {
-    const userId = session?.user.id;
-    if (!userId) throw new Error('Sign in before changing businesses.');
-    await persistBusinessScope(db, userId, nextBusinessId);
-    setBusinessIdState(nextBusinessId);
-  }, [db, session?.user.id]);
+
   const loading = authLoading || businessLoading;
-  const value = useMemo(() => ({ session, businessId, loading, configured: hasSupabaseConfig, setBusinessId }), [session, businessId, loading, setBusinessId]);
+  const value = useMemo(() => ({ session, businessId, loading, configured: hasSupabaseConfig }), [session, businessId, loading]);
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }
 

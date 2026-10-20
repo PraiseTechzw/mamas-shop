@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
 import { ActivityIndicator, Dimensions, Image, ImageBackground, Keyboard, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Svg, { Defs, LinearGradient, Path, Rect, Stop } from 'react-native-svg';
-import { router, useLocalSearchParams } from 'expo-router';
+import { router } from 'expo-router';
 import { ArrowLeft, ArrowRight, Eye, EyeOff, Heart, LockKeyhole, Mail, ShieldCheck, Tag, Truck, UserRound } from 'lucide-react-native';
 import { colors } from '@/constants/theme';
 import { AppText, Field } from '@/components/ui/primitives';
@@ -91,8 +91,6 @@ export function WelcomeScreen() {
 
 export function LoginScreen() {
   const { configured } = useAuth();
-  const { next } = useLocalSearchParams<{ next?: string | string[] }>();
-  const returnPath = (Array.isArray(next) ? next[0] : next) === '/(auth)/join-business' ? '/(auth)/join-business' : '/(tabs)';
   const [creating, setCreating] = useState(false);
   // Keep keystrokes in refs so typing does not rerender the whole auth screen
   // while Android's native keyboard is editing the focused TextInput.
@@ -158,12 +156,12 @@ export function LoginScreen() {
       if (creating) {
         const { data, error: authError } = await supabase.auth.signUp({ email: email.current.trim(), password: password.current, options: { data: { full_name: fullName.current.trim() } } });
         if (authError) throw authError;
-        if (data.session) router.replace(returnPath);
+        if (data.session) router.replace('/(tabs)');
         else setNotice('Check your email to confirm your account, then log in here.');
       } else {
         const { error: authError } = await supabase.auth.signInWithPassword({ email: email.current.trim(), password: password.current });
         if (authError) throw authError;
-        router.replace(returnPath);
+        router.replace('/(tabs)');
       }
     } catch (value) {
       setError(value instanceof Error ? value.message : 'We could not sign you in. Please try again.');
@@ -221,9 +219,6 @@ export function LoginScreen() {
             <AppText variant="label" color={colors.purple}>{creating ? 'Log in' : 'Create one'}</AppText>
           </Pressable>
         </View>
-        <Pressable accessibilityRole="button" onPress={() => router.push('/(auth)/join-business')} style={{ alignSelf: 'center', paddingVertical: 8 }}>
-          <AppText variant="label" color={colors.purple}>Have an invitation code? Join a business</AppText>
-        </Pressable>
         <ZimbabweFooter />
       </ScrollView>
     </KeyboardAvoidingView>

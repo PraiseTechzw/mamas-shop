@@ -1,19 +1,28 @@
 import { useCallback, useEffect, useState } from 'react';
-import { Image, Pressable, RefreshControl, ScrollView, StyleSheet, View } from 'react-native';
-import Svg, { Circle } from 'react-native-svg';
+import { Pressable, RefreshControl, ScrollView, StyleSheet, View } from 'react-native';
 import { router } from 'expo-router';
 import { useSQLiteContext } from 'expo-sqlite';
-import { Banknote, Bell, CircleAlert, CreditCard, WalletCards } from 'lucide-react-native';
+import { AlertTriangle, Banknote, ChevronRight, CreditCard, Package, ShoppingCart, Users } from 'lucide-react-native';
 import { colors } from '@/constants/theme';
 import { formatMoney } from '@/lib/format';
 import { getDashboardData, type DashboardData } from '@/db/repositories/dashboard';
 import { needsShopSetup } from '@/db/repositories/settings';
 import { useAuth } from '@/features/auth/auth-context';
-import { AppText, Card, SectionTitle } from '@/components/ui/primitives';
+import { AppText, Card } from '@/components/ui/primitives';
 import { useSyncStatus } from '@/features/sync/sync-context';
 
-const emptyData: DashboardData = { salesTodayCents: 0, salesTodayCount: 0, paymentsTodayCents: 0, creditOutstandingCents: 0, changeOwedOpenCents: 0, lowStockCount: 0, salesBySeller: [], salesByLocation: [] };
-const sellerColors = ['#4D35D7', '#F5A623', '#23A47A', '#E94E64', '#4388E8'];
+const emptyData: DashboardData = {
+  salesTodayCents: 0,
+  salesTodayCount: 0,
+  cashReceivedTodayCents: 0,
+  cashPaymentsTodayCount: 0,
+  creditGivenTodayCents: 0,
+  creditSalesTodayCount: 0,
+  creditOutstandingCents: 0,
+  owingCustomerCount: 0,
+  changeOwedOpenCents: 0,
+  lowStockCount: 0,
+};
 
 export function DashboardScreen() {
   const db = useSQLiteContext();
@@ -21,135 +30,95 @@ export function DashboardScreen() {
   const { revision } = useSyncStatus();
   const [data, setData] = useState(emptyData);
   const [refreshing, setRefreshing] = useState(false);
-  const [breakdown, setBreakdown] = useState<'location' | 'seller'>('location');
-  const firstName = String(session?.user.user_metadata?.full_name ?? session?.user.email?.split('@')[0] ?? 'Mama').split(' ')[0];
+
   const load = useCallback(async () => {
     setRefreshing(true);
     try {
       const ownerId = businessId ?? session?.user.id ?? '';
-      if (session && businessId === session.user.id && await needsShopSetup(db, ownerId)) { router.replace('/setup'); return; }
+      if (session && businessId === session.user.id && await needsShopSetup(db, ownerId)) {
+        router.replace('/setup');
+        return;
+      }
       setData(await getDashboardData(db, ownerId));
-    } finally { setRefreshing(false); }
+    } finally {
+      setRefreshing(false);
+    }
   }, [db, businessId, session]);
-  // eslint-disable-next-line react-hooks/set-state-in-effect -- refresh dashboard totals from local SQLite on screen entry.
+
+  // eslint-disable-next-line react-hooks/set-state-in-effect -- refresh local totals when the dashboard opens or a synced event arrives.
   useEffect(() => { void load(); }, [load, revision]);
+
   return <ScrollView className="flex-1 bg-canvas" refreshControl={<RefreshControl refreshing={refreshing} onRefresh={load} tintColor={colors.purple} />} contentContainerStyle={styles.page}>
-    <View style={styles.profileRow}>
-      <View style={styles.profileAvatar}><AppText variant="label" color={colors.deepPurple}>{firstName.slice(0, 1).toUpperCase()}</AppText></View>
-      <View style={styles.profileText}><AppText variant="label">{firstName}</AppText><AppText variant="small" color={colors.secondary}>Owner</AppText></View>
-      <Pressable accessibilityRole="button" accessibilityLabel="Notification settings" onPress={() => router.push('/settings/notifications')} style={styles.bellButton}><Bell size={20} stroke={colors.deepPurple} /></Pressable>
-    </View>
-    <View style={styles.greeting}>
-      <AppText variant="heading" style={styles.greetingTitle}>Good morning, {firstName}!</AppText>
-      <AppText color={colors.secondary}>Here’s what’s happening with your shop today.</AppText>
-    </View>
-
     <View style={styles.metrics}>
-      <MetricCard title="Today’s Sales" value={formatMoney(data.salesTodayCents)} caption={`${data.salesTodayCount} ${data.salesTodayCount === 1 ? 'sale' : 'sales'} today`} icon={<Banknote size={17} stroke="#1A9A70" />} tone="green" />
-      <MetricCard title="Received today" value={formatMoney(data.paymentsTodayCents)} caption="Sales payments and repayments" icon={<Banknote size={17} stroke="#338A72" />} tone="mint" />
-      <MetricCard title="Credit Owed" value={formatMoney(data.creditOutstandingCents)} caption="Outstanding customer credit" icon={<CreditCard size={17} stroke="#EC5366" />} tone="rose" onPress={() => router.push('/credit')} />
-      {data.changeOwedOpenCents > 0 ? <MetricCard title="Change Owed" value={formatMoney(data.changeOwedOpenCents)} caption="Change the shop must return" icon={<WalletCards size={17} stroke="#D77B1B" />} tone="amber" onPress={() => router.push('/credit')} /> : null}
-      <MetricCard title="Low Stock" value={`${data.lowStockCount} items`} caption={data.lowStockCount ? 'Restock needed' : 'Stock levels look good'} icon={<CircleAlert size={17} stroke="#ED8B22" />} tone="orange" onPress={() => router.push('/inventory')} />
+      <MetricCard title="Total Sales" value={formatMoney(data.salesTodayCents)} detail={`${data.salesTodayCount} ${data.salesTodayCount === 1 ? 'sale' : 'sales'} today`} icon={<Banknote size={17} stroke="#2563EB" />} tone="blue" />
+      <MetricCard title="Cash Received" value={formatMoney(data.cashReceivedTodayCents)} detail={`${data.cashPaymentsTodayCount} cash ${data.cashPaymentsTodayCount === 1 ? 'payment' : 'payments'}`} icon={<Banknote size={17} stroke="#2563EB" />} tone="blue" />
+      <MetricCard title="Credit Given" value={formatMoney(data.creditGivenTodayCents)} detail={`${data.creditSalesTodayCount} credit ${data.creditSalesTodayCount === 1 ? 'sale' : 'sales'} today`} icon={<Users size={17} stroke="#2563EB" />} tone="blue" />
+      <MetricCard title="Outstanding Credit" value={formatMoney(data.creditOutstandingCents)} detail={`${data.owingCustomerCount} ${data.owingCustomerCount === 1 ? 'customer' : 'customers'}`} icon={<CreditCard size={17} stroke="#EF4444" />} tone="red" onPress={() => router.push('/(tabs)/credit')} />
     </View>
 
-    <View style={styles.breakdownHeading}><SectionTitle>Sales Breakdown</SectionTitle></View>
-    <Card style={styles.breakdownCard}>
-      <View style={styles.segmented}>
-        <Pressable onPress={() => setBreakdown('location')} style={[styles.segment, breakdown === 'location' && styles.segmentActive]}><AppText variant="small" color={breakdown === 'location' ? colors.deepPurple : colors.secondary}>By Location</AppText></Pressable>
-        <Pressable onPress={() => setBreakdown('seller')} style={[styles.segment, breakdown === 'seller' && styles.segmentActive]}><AppText variant="small" color={breakdown === 'seller' ? colors.deepPurple : colors.secondary}>By Seller</AppText></Pressable>
+    <Pressable accessibilityRole="button" accessibilityLabel={`${data.lowStockCount} low stock items. Open inventory`} onPress={() => router.push('/(tabs)/inventory')} style={({ pressed }) => [styles.stockAlert, data.lowStockCount === 0 && styles.stockAlertClear, pressed && styles.pressed]}>
+      <View style={[styles.alertIcon, data.lowStockCount === 0 && styles.alertIconClear]}><AlertTriangle size={17} fill={data.lowStockCount === 0 ? 'transparent' : '#F97316'} stroke={data.lowStockCount === 0 ? '#16865D' : '#FFFFFF'} /></View>
+      <View style={styles.alertCopy}>
+        <AppText variant="label" color={data.lowStockCount === 0 ? colors.success : '#D94328'}>{data.lowStockCount === 0 ? 'Stock looks good' : 'Low Stock Alert'}</AppText>
+        <AppText variant="small" color={colors.secondary}>{data.lowStockCount === 0 ? 'All products are above their minimum level' : `${data.lowStockCount} ${data.lowStockCount === 1 ? 'item is' : 'items are'} below minimum stock level`}</AppText>
       </View>
-      {breakdown === 'seller' && data.salesBySeller.length > 0 ? <SellerBreakdown rows={data.salesBySeller} /> : breakdown === 'location' && data.salesByLocation.length > 0 ? <LocationBreakdown rows={data.salesByLocation} /> : <View style={styles.breakdownEmpty}>
-        <Image source={require('@/assets/images/shop-illustrations/reports/analytics-unavailable.png')} resizeMode="contain" style={styles.emptyIllustration} accessibilityLabel="Sales breakdown illustration" />
-        <AppText variant="label" style={styles.emptyTitle}>{breakdown === 'location' ? 'No location breakdown yet' : 'No seller sales yet'}</AppText>
-        <AppText variant="small" color={colors.secondary} style={styles.emptyHint}>{breakdown === 'location' ? 'Choose a location on each sale to compare shop totals.' : 'Add seller profiles, then select a seller on each sale.'}</AppText>
-        <Pressable accessibilityRole="button" onPress={() => router.push(breakdown === 'location' ? '/settings/locations' : '/settings/team')} style={styles.breakdownSetup}><AppText variant="small" color={colors.deepPurple}>{breakdown === 'location' ? 'Manage locations' : 'Manage sellers'}</AppText><Banknote size={14} stroke={colors.deepPurple}/></Pressable>
-      </View>}
-    </Card>
+      <ChevronRight size={18} stroke={colors.secondary} />
+    </Pressable>
+
+    <AppText variant="heading" style={styles.sectionTitle}>Quick Actions</AppText>
+    <View style={styles.actions}>
+      <QuickAction title="New Sale" icon={<ShoppingCart size={21} stroke="#FFFFFF" />} tone="sale" onPress={() => router.push('/(tabs)/sales')} />
+      <QuickAction title="Add Stock" icon={<Package size={21} stroke="#202033" />} tone="stock" onPress={() => router.push('/inventory/receive-stock')} />
+      <QuickAction title="Customers" icon={<Users size={21} stroke="#155EEF" />} tone="customers" onPress={() => router.push('/(tabs)/credit')} />
+    </View>
   </ScrollView>;
 }
 
-function MetricCard({ title, value, caption, icon, tone, onPress }: { title: string; value: string; caption: string; icon: React.ReactNode; tone: 'green' | 'mint' | 'rose' | 'orange' | 'amber'; onPress?: () => void }) {
-  const card = <Card style={{ ...styles.metricCard, backgroundColor: metricTones[tone].surface, borderColor: metricTones[tone].border }}>
-    <View style={styles.metricTitleRow}><View style={[styles.metricIcon, { backgroundColor: metricTones[tone].icon }]}>{icon}</View><AppText variant="small" color={colors.text} numberOfLines={1} style={styles.metricTitle}>{title}</AppText></View>
-    <AppText variant="amount" numberOfLines={1} style={styles.metricValue}>{value}</AppText>
-    <AppText variant="small" color={metricTones[tone].accent} numberOfLines={1} style={styles.metricCaption}>{caption}</AppText>
-  </Card>;
-  if (onPress) return <Pressable accessibilityRole="button" onPress={onPress} style={({ pressed }) => [styles.metricCardWrap, pressed && styles.metricCardPressed]}>{card}</Pressable>;
-  return <View style={styles.metricCardWrap}>{card}</View>;
-}
-
-function SellerBreakdown({ rows }: { rows: DashboardData['salesBySeller'] }) {
-  const total = rows.reduce((sum, row) => sum + row.totalCents, 0);
-  const circumference = 2 * Math.PI * 55;
-  let offset = 0;
-  return <View style={styles.sellerBreakdown}>
-    <View style={styles.donutWrap}>
-      <Svg width={148} height={148} viewBox="0 0 148 148">
-        <Circle cx={74} cy={74} r={55} fill="none" stroke="#EDEBFA" strokeWidth={18} />
-        {total > 0 ? rows.map((row, index) => {
-          const length = (row.totalCents / total) * circumference;
-          const currentOffset = offset;
-          offset += length;
-          return <Circle key={row.sellerId ?? 'unassigned'} cx={74} cy={74} r={55} fill="none" stroke={sellerColors[index % sellerColors.length]} strokeWidth={18} strokeDasharray={`${length} ${circumference - length}`} strokeDashoffset={-currentOffset} transform="rotate(-90 74 74)" />;
-        }) : null}
-      </Svg>
-      <View style={styles.donutCenter}><AppText variant="small" color={colors.secondary}>Sales</AppText><AppText variant="label">{rows.reduce((sum, row) => sum + row.saleCount, 0)}</AppText></View>
+function MetricCard({ title, value, detail, icon, tone, onPress }: { title: string; value: string; detail: string; icon: React.ReactNode; tone: 'blue' | 'red'; onPress?: () => void }) {
+  const card = <Card style={{ ...styles.metricCard, ...(tone === 'red' ? styles.metricCardRed : {}) }}>
+    <View style={styles.metricHeading}>
+      <AppText variant="small" numberOfLines={1} style={styles.metricTitle}>{title}</AppText>
+      <View style={[styles.metricIcon, tone === 'red' && styles.metricIconRed]}>{icon}</View>
     </View>
-    <View style={styles.sellerLegend}>{rows.map((row, index) => <View key={row.sellerId ?? 'unassigned'} style={styles.legendRow}><View style={[styles.legendDot, { backgroundColor: sellerColors[index % sellerColors.length] }]} /><AppText variant="small" style={styles.legendName} numberOfLines={1}>{row.sellerName}</AppText><AppText variant="small" color={colors.secondary}>{total ? Math.round((row.totalCents / total) * 100) : 0}%</AppText><AppText variant="small" style={styles.legendAmount}>{formatMoney(row.totalCents)}</AppText></View>)}</View>
-  </View>;
+    <AppText variant="amount" numberOfLines={1} style={[styles.metricValue, tone === 'red' && styles.metricValueRed]}>{value}</AppText>
+    <AppText variant="small" color={tone === 'red' ? '#EF4444' : '#16865D'} numberOfLines={1} style={styles.metricDetail}>{detail}</AppText>
+  </Card>;
+
+  if (onPress) return <Pressable accessibilityRole="button" onPress={onPress} style={({ pressed }) => [styles.metricWrap, pressed && styles.pressed]}>{card}</Pressable>;
+  return <View style={styles.metricWrap}>{card}</View>;
 }
 
-function LocationBreakdown({ rows }: { rows: DashboardData['salesByLocation'] }) {
-  const total = rows.reduce((sum, row) => sum + row.totalCents, 0);
-  return <View style={styles.locationBreakdown}>{rows.map((row,index)=><View key={row.locationId??'unassigned'} style={styles.locationBarRow}><View style={styles.locationBarHeading}><View style={[styles.legendDot,{backgroundColor:sellerColors[index%sellerColors.length]}]}/><AppText variant="small" style={styles.legendName}>{row.locationName}</AppText><AppText variant="small" color={colors.secondary}>{row.saleCount} sales</AppText><AppText variant="small" style={styles.legendAmount}>{formatMoney(row.totalCents)}</AppText></View><View style={styles.barTrack}><View style={[styles.barFill,{width:`${total?Math.max(4,row.totalCents/total*100):0}%`,backgroundColor:sellerColors[index%sellerColors.length]}]}/></View></View>)}</View>;
+function QuickAction({ title, icon, tone, onPress }: { title: string; icon: React.ReactNode; tone: 'sale' | 'stock' | 'customers'; onPress: () => void }) {
+  return <Pressable accessibilityRole="button" onPress={onPress} style={({ pressed }) => [styles.quickAction, styles[tone], pressed && styles.pressed]}>
+    {icon}
+    <AppText variant="small" color={tone === 'sale' ? '#FFFFFF' : tone === 'customers' ? '#155EEF' : '#202033'} style={styles.quickLabel}>{title}</AppText>
+  </Pressable>;
 }
-
-const metricTones = {
-  green: { surface: '#F0FBF7', border: '#DFF5EC', icon: '#DCF5EB', accent: '#18865F' },
-  mint: { surface: '#F0FAF8', border: '#E0F3EF', icon: '#DDF3ED', accent: '#20896F' },
-  rose: { surface: '#FFF4F5', border: '#FBE7EA', icon: '#FFE2E6', accent: '#D64C5E' },
-  orange: { surface: '#FFF8EE', border: '#F9EEDB', icon: '#FFEBD1', accent: '#D77B1B' },
-  amber: { surface: '#FFF9EC', border: '#F7EAC8', icon: '#FDF0CE', accent: '#B57A12' },
-};
 
 const styles = StyleSheet.create({
-  page: { padding: 18, paddingTop: 14, paddingBottom: 30, gap: 15 },
-  profileRow: { flexDirection: 'row', alignItems: 'center', gap: 9 },
-  profileAvatar: { width: 38, height: 38, borderRadius: 19, backgroundColor: '#F6D9BC', alignItems: 'center', justifyContent: 'center', borderWidth: 2, borderColor: '#FFFFFF' },
-  profileText: { flex: 1, gap: 1 },
-  bellButton: { width: 40, height: 40, borderRadius: 14, backgroundColor: '#FFFFFF', borderWidth: 1, borderColor: colors.border, alignItems: 'center', justifyContent: 'center' },
-  greeting: { gap: 3, marginTop: 1, marginBottom: 2 },
-  greetingTitle: { fontSize: 21, color: colors.text },
-  metrics: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
-  metricCardWrap: { width: '48%', flexGrow: 1, minWidth: '45%' },
-  metricCardPressed: { opacity: 0.85 },
-  metricCard: { padding: 12, gap: 7, borderRadius: 17 },
-  metricTitleRow: { flexDirection: 'row', alignItems: 'center', gap: 7 },
-  metricIcon: { width: 25, height: 25, alignItems: 'center', justifyContent: 'center', borderRadius: 8 },
-  metricTitle: { flex: 1, fontFamily: 'Inter-Medium', fontSize: 11 },
-  metricValue: { fontSize: 19, lineHeight: 23 },
-  metricCaption: { fontSize: 9, lineHeight: 12 },
-  breakdownHeading: { marginTop: 1, marginBottom: -6 },
-  breakdownCard: { padding: 12, gap: 11, borderRadius: 18 },
-  segmented: { flexDirection: 'row', gap: 7 },
-  segment: { flex: 1, minHeight: 29, alignItems: 'center', justifyContent: 'center', borderRadius: 16, backgroundColor: '#F1F3F8' },
-  segmentActive: { backgroundColor: '#EBE9FD' },
-  breakdownEmpty: { minHeight: 205, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 24, paddingVertical: 14, borderRadius: 15, backgroundColor: '#FAFAFE' },
-  emptyIllustration: { width: 148, height: 112 },
-  emptyTitle: { marginTop: 3, textAlign: 'center' },
-  emptyHint: { textAlign: 'center', marginTop: 4, lineHeight: 16 },
-  breakdownSetup: { minHeight: 34, flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 4, paddingHorizontal: 10, borderRadius: 11, backgroundColor: colors.lavenderTint },
-  sellerBreakdown: { minHeight: 200, flexDirection: 'row', alignItems: 'center', gap: 12 },
-  donutWrap: { width: 150, height: 150, alignItems: 'center', justifyContent: 'center' },
-  donutCenter: { position: 'absolute', alignItems: 'center', justifyContent: 'center' },
-  sellerLegend: { flex: 1, gap: 12 },
-  legendRow: { flexDirection: 'row', alignItems: 'center', gap: 5 },
-  legendDot: { width: 7, height: 7, borderRadius: 4 },
-  legendName: { flex: 1 },
-  legendAmount: { width: 59, textAlign: 'right' },
-  locationBreakdown: { minHeight: 190, justifyContent: 'center', gap: 17, paddingVertical: 14 },
-  locationBarRow: { gap: 7 },
-  locationBarHeading: { flexDirection: 'row', alignItems: 'center', gap: 6 },
-  barTrack: { height: 8, overflow: 'hidden', borderRadius: 5, backgroundColor: '#EDEBFA' },
-  barFill: { height: '100%', borderRadius: 5 },
+  page: { paddingHorizontal: 12, paddingTop: 10, gap: 11, paddingBottom: 26 },
+  metrics: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  metricWrap: { width: '48%', flexGrow: 1, minWidth: '46%' },
+  metricCard: { height: 76, paddingHorizontal: 9, paddingVertical: 8, gap: 3, borderRadius: 13, borderColor: '#DFEAFE', backgroundColor: '#FFFFFF', shadowColor: '#143B70', shadowOpacity: 0.06, shadowRadius: 5, shadowOffset: { width: 0, height: 2 }, elevation: 1 },
+  metricCardRed: { borderColor: '#FCE0E0' },
+  metricHeading: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 4 },
+  metricTitle: { flex: 1, fontFamily: 'Inter-Medium', fontSize: 9.5, color: '#4C5B72' },
+  metricIcon: { width: 23, height: 23, borderRadius: 8, alignItems: 'center', justifyContent: 'center', backgroundColor: '#EFF5FF' },
+  metricIconRed: { backgroundColor: '#FFF0F0' },
+  metricValue: { fontSize: 17, lineHeight: 19, color: '#182439' },
+  metricValueRed: { color: '#E53935' },
+  metricDetail: { fontSize: 9, lineHeight: 12, fontFamily: 'Inter-Medium' },
+  stockAlert: { minHeight: 48, flexDirection: 'row', alignItems: 'center', gap: 9, paddingHorizontal: 10, paddingVertical: 6, borderRadius: 12, backgroundColor: '#FFF3E9' },
+  stockAlertClear: { backgroundColor: '#ECF8F1' },
+  alertIcon: { width: 24, height: 24, alignItems: 'center', justifyContent: 'center' },
+  alertIconClear: { backgroundColor: '#DCF2E5', borderRadius: 8 },
+  alertCopy: { flex: 1, gap: 1 },
+  sectionTitle: { fontSize: 14, color: '#174EA6', marginTop: 1 },
+  actions: { flexDirection: 'row', gap: 7 },
+  quickAction: { flex: 1, minWidth: 0, height: 62, alignItems: 'center', justifyContent: 'center', gap: 5, borderRadius: 12 },
+  sale: { backgroundColor: '#1455D9' },
+  stock: { backgroundColor: '#FFD844' },
+  customers: { backgroundColor: '#E2EEFF' },
+  quickLabel: { fontFamily: 'Inter-SemiBold', fontSize: 10 },
+  pressed: { opacity: 0.84 },
 });

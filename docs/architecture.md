@@ -22,13 +22,13 @@ Expo UI and NativeWind have different jobs: Expo UI supplies native controls; Na
 3. A user change is saved to SQLite in a transaction. For syncable changes, write the domain record and its outbox operation in the same transaction, then update the UI immediately from local data.
 4. `src/services/sync-engine.ts` observes connectivity and queued local writes, appends operations to the Supabase `sync_events` journal, then downloads later events for the active business. A business keeps its owner's auth UUID as its stable `owner_id`; `business_members` links staff auth UUIDs to that owner. Row-level security permits only the owner and accepted members to read and append that business's events.
 5. Delete an outbox item only after Supabase confirms the insert. Retry transient failures with bounded backoff; show pending/failed sync state without blocking sales or stock workflows. Each device keeps a pull cursor and an idempotency ledger so replaying its own event does not double-apply it.
-6. `src/services/apply-remote-event.ts` owns inbound materialization. Editable product/settings changes use timestamps; sales, repayments, and stock events are immutable and applied once. A stock event that would create negative inventory, a missing dependency, or an unsupported operation is retained as a visible sync conflict rather than silently discarded. Conflicts can be retried from Sync settings after the underlying issue is resolved.
-7. Seller profiles identify who is responsible for each sale and support per-seller reports. Owner-created seller profiles are shop-owned; an accepted staff account uses its auth UUID as its seller ID. Locations and sellers sync as part of the business event stream. Joining downloads the existing event archive. Accounts with existing local business records cannot join, which prevents local records and queued events from being reassigned silently.
+6. `src/services/apply-remote-event.ts` owns inbound materialization. Editable product/settings changes use timestamps; sales, repayments, and stock events are immutable and applied once. A stock event that would create negative inventory, a missing dependency, or an unsupported operation is retained as a visible sync conflict rather than silently discarded. Conflicts can be retried from Sync settings after the underlying issue is resolved. Change owed to a customer for later collection is its own `change_owed` entity (schema version 9): it syncs via `change_owed.create`/`change_owed.settle` events, is a shop liability, and never enters the customer credit ledger or the payments table.
+7. An owner seller profile is created during first-run setup so each sale has an accountable seller. Seller attribution, locations, and membership data remain supported by the local schema and sync stream for compatibility, while seller/team and multiple-location management screens are deferred from the MVP.
 8. Preserve audit history for sales, repayments, expenses, stock movements, customers, sellers, locations, and shop settings. Never silently overwrite financial or inventory events.
 
 Use stable operation IDs and server-side idempotency so a retry cannot create a duplicate sale, repayment, or stock movement. Treat network reachability as a hint: a connected device may still fail to reach Supabase. Never report a queued offline write as server-synced until the server confirms it.
 
-Business invitations store only a SHA-256 code hash in Supabase. Codes are one-use, expire after 14 days, and can optionally be restricted to the invited email. The membership RPC enforces one business per staff login. New cloud events record the authenticated uploader in `actor_id`; existing owner events are backfilled to the owner. Apply all `supabase/migrations/` files before enabling cloud sync or staff invitations.
+The retained server membership migrations support one-use, expiring business invitations for a future staff-access release. New cloud events record the authenticated uploader in `actor_id`; existing owner events are backfilled to the owner. Apply all `supabase/migrations/` files before enabling cloud sync.
 
 ## Code ownership
 
@@ -36,10 +36,15 @@ Business invitations store only a SHA-256 code hash in Supabase. Codes are one-u
 - `src/features/`: feature screens, forms, validation, and use cases.
 - `src/components/`: shared visual components; feature-only components stay inside the feature.
 - `src/db/`: SQLite setup, schema, migrations, and repositories. Repositories own local reads/writes and expose typed feature-facing methods.
-- `src/services/`: Supabase adapters, sync orchestration, conflict policy, and cross-feature reporting.
+- `src/services/`: Supabase adapters, sync orchestration, and conflict policy.
 - `src/lib/`: low-level shared helpers (network, formatting, permission checks, and the Supabase client).
 - `src/stores/`: transient app-wide client state only. Persisted business records belong in SQLite.
 - `supabase/migrations/`, `supabase/functions/`, `supabase/seed.sql`: remote schema, server functions, and development seed data.
+- `tests/`: Jest suites for repositories, migrations, inbound event materialization, and the sync engine. `tests/helpers/sqlite.ts` runs the real SQLite business SQL against an in-memory `node:sqlite` database through an expo-sqlite-compatible adapter.
+
+## MVP scope
+
+The first release focuses on sales, inventory, and customer credit. Expense entry, detailed reports, staff invitations, and multi-location management are deferred from the app UI. Existing migrations, audit records, and sync handlers remain so prior business data is preserved and can still be synchronized.
 
 ## Product design
 

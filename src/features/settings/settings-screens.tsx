@@ -1,68 +1,60 @@
 import { useEffect, useState } from 'react';
-import { Alert, Image, Pressable, Share, StyleSheet, Text, View } from 'react-native';
+import { Alert, Image, Pressable, StyleSheet, View } from 'react-native';
 import { router } from 'expo-router';
-import * as Crypto from 'expo-crypto';
 import { useSQLiteContext } from 'expo-sqlite';
-import { Bell, Building2, ChevronRight, CircleHelp, CreditCard, Database, MapPin, ShieldCheck, Users } from 'lucide-react-native';
+import { CircleHelp, Database } from 'lucide-react-native';
 import { useAuth } from '@/features/auth/auth-context';
-import { addLocation, ensurePrimaryLocation } from '@/db/repositories/inventory';
-import { getShopSettings, listAuditLog, listLocationBalances, saveShopSettings } from '@/db/repositories/settings';
-import type { InventoryLocation, Seller } from '@/db/schema';
-import { createSeller, ensureOwnerSeller, ensureUserSeller, listSellers } from '@/db/repositories/sellers';
+import { getShopSettings, saveShopSettings } from '@/db/repositories/settings';
 import { colors } from '@/constants/theme';
 import { formatDateTime, setAppCurrency } from '@/lib/format';
 import { AppText, Card, Field, Page, PrimaryButton, StatusBadge } from '@/components/ui/primitives';
 import { useSyncStatus } from '@/features/sync/sync-context';
 import { retrySyncConflicts } from '@/services/sync-engine';
-import { createBusinessInvite } from '@/services/business-membership';
 
-type Item = {title:string;detail:string;icon:typeof Building2;path:string};
-const entries:Item[]=[{title:'Shop profile',detail:'Shop name, currency, and stock reminders',icon:Building2,path:'/settings'},{title:'Team',detail:'Account and seller details',icon:Users,path:'/settings/team'},{title:'Locations',detail:'Manage stock locations',icon:MapPin,path:'/settings/locations'},{title:'Payment methods',detail:'Methods available at checkout',icon:CreditCard,path:'/settings/payment-methods'},{title:'Notifications',detail:'Stock and account reminders',icon:Bell,path:'/settings/notifications'},{title:'Sync status',detail:'Pending changes saved on this device',icon:Database,path:'/settings/sync'},{title:'Activity log',detail:'Recent changes made in the shop',icon:ShieldCheck,path:'/settings/audit-log'}];
-export function SettingsScreen(){const db=useSQLiteContext();const {session,businessId}=useAuth();const owner=businessId??session?.user.id??'';const [name,setName]=useState('');const [currency,setCurrency]=useState('USD');const [alerts,setAlerts]=useState(true);const [busy,setBusy]=useState(false);const [saved,setSaved]=useState(false);useEffect(()=>{void getShopSettings(db,owner).then((s)=>{setName(s.shop_name);setCurrency(s.currency);setAppCurrency(s.currency);setAlerts(Boolean(s.low_stock_alerts));});},[db,owner]);const save=async()=>{setBusy(true);try{await saveShopSettings(db,owner,name,currency,alerts);setAppCurrency(currency);setSaved(true);Alert.alert('Settings saved','Your shop preferences have been updated.');}finally{setBusy(false);}};return <Page title="Settings" subtitle="Make Mama’s Shop work the way your family does." back><Card style={{gap:12}}><AppText variant="heading">Shop profile</AppText><Field label="Shop name" value={name} onChangeText={setName} placeholder="Mama’s Shop"/><AppText variant="label">Currency</AppText><View style={styles.wrap}>{['USD','ZWL','ZAR','BWP'].map((code)=><Pressable key={code} onPress={()=>setCurrency(code)} style={[styles.chip,currency===code&&styles.selected]}><AppText variant="label" color={currency===code?colors.deepPurple:colors.secondary}>{code}</AppText></Pressable>)}</View><Pressable onPress={()=>setAlerts((v)=>!v)} style={styles.toggleRow}><View style={{flex:1}}><AppText variant="label">Low stock reminders</AppText><AppText variant="small" color={colors.secondary}>Highlight products at or below their restock level</AppText></View><StatusBadge label={alerts?'On':'Off'} tone={alerts?'green':'purple'}/></Pressable><PrimaryButton label={saved?'Saved':'Save shop settings'} loading={busy} onPress={save}/></Card><Card style={{gap:3}}>{entries.slice(1).map((item)=><SettingsLink key={item.title} item={item}/>)}</Card><AppText variant="small" color={colors.secondary}>Changes save offline and sync to the signed-in shop when online. Seller profiles identify staff for reporting; they are not separate sign-ins.</AppText></Page>}
-function SettingsLink({item}:{item:Item}){const Icon=item.icon;return <Pressable onPress={()=>router.push(item.path as never)} style={styles.link}><View style={styles.icon}><Icon stroke={colors.purple} size={18}/></View><View style={{flex:1}}><AppText variant="label">{item.title}</AppText><AppText variant="small" color={colors.secondary}>{item.detail}</AppText></View><ChevronRight stroke={colors.secondary} size={18}/></Pressable>}
-export function LocationsScreen(){const db=useSQLiteContext();const {session,businessId}=useAuth();const owner=businessId??session?.user.id??'';const [rows,setRows]=useState<(InventoryLocation&{products:number;units:number})[]>([]);const [name,setName]=useState('');const [error,setError]=useState('');const load=async()=>{await ensurePrimaryLocation(db,owner);setRows(await listLocationBalances(db,owner));};/* eslint-disable react-hooks/set-state-in-effect, react-hooks/exhaustive-deps -- refresh local location balances on screen entry. */useEffect(()=>{void load();},[db,owner]);const create=async()=>{setError('');try{await addLocation(db,owner,name);setName('');await load();}catch(e){setError(e instanceof Error?e.message:'Could not add location.');}};return <Page title="Stock locations" subtitle="Track products in separate shops or storage areas." back><Card style={{gap:10}}><Field label="New location" value={name} onChangeText={setName} placeholder="e.g. Back room"/><PrimaryButton label="Add location" onPress={create}/>{error?<AppText variant="small" color={colors.danger}>{error}</AppText>:null}</Card>{rows.map((l)=><Card key={l.id} style={styles.location}><View style={{flex:1}}><AppText variant="label">{l.name}</AppText><AppText variant="small" color={colors.secondary}>{l.products} products · {l.units} total units</AppText></View>{l.is_primary?<StatusBadge label="Main"/>:null}</Card>)}<AppText variant="small" color={colors.secondary}>When adding a new location, stock starts at zero. Use Transfer stock to move quantities between locations.</AppText></Page>}
-export function TeamSettingsScreen(){
-  const db=useSQLiteContext();
-  const {session,businessId}=useAuth();
-  const owner=businessId??session?.user.id??'';
-  const isOwner=Boolean(session&&businessId===session.user.id);
-  const ownerName=String(session?.user.user_metadata?.full_name??session?.user.email?.split('@')[0]??'Shop owner');
-  const [rows,setRows]=useState<Seller[]>([]);
-  const [name,setName]=useState('');
-  const [phone,setPhone]=useState('');
-  const [inviteEmail,setInviteEmail]=useState('');
-  const [inviteCode,setInviteCode]=useState('');
-  const [inviteExpiry,setInviteExpiry]=useState('');
-  const [error,setError]=useState('');
-  const [busy,setBusy]=useState(false);
-  const load=async()=>{
-    if(isOwner) await ensureOwnerSeller(db,owner,ownerName);
-    else if(session) await ensureUserSeller(db,owner,session.user.id,ownerName);
-    setRows(await listSellers(db,owner));
+export function SettingsScreen() {
+  const db = useSQLiteContext();
+  const { session, businessId } = useAuth();
+  const owner = businessId ?? session?.user.id ?? '';
+  const [name, setName] = useState('');
+  const [currency, setCurrency] = useState('USD');
+  const [alerts, setAlerts] = useState(true);
+  const [busy, setBusy] = useState(false);
+  const [saved, setSaved] = useState(false);
+
+  useEffect(() => {
+    void getShopSettings(db, owner).then((settings) => {
+      setName(settings.shop_name);
+      setCurrency(settings.currency);
+      setAppCurrency(settings.currency);
+      setAlerts(Boolean(settings.low_stock_alerts));
+    });
+  }, [db, owner]);
+
+  const save = async () => {
+    setBusy(true);
+    try {
+      await saveShopSettings(db, owner, name, currency, alerts);
+      setAppCurrency(currency);
+      setSaved(true);
+      Alert.alert('Settings saved', 'Your shop preferences have been updated.');
+    } finally {
+      setBusy(false);
+    }
   };
-  /* eslint-disable react-hooks/set-state-in-effect, react-hooks/exhaustive-deps -- load local seller profiles on this screen. */
-  useEffect(()=>{void load().catch((value)=>setError(value instanceof Error?value.message:'Could not load team details.'));},[db,owner,ownerName,isOwner]);
-  const add=async()=>{setError('');setBusy(true);try{await createSeller(db,owner,name,phone);setName('');setPhone('');await load();}catch(value){setError(value instanceof Error?value.message:'Could not add this seller.');}finally{setBusy(false);}};
-  const makeInvite=async()=>{
-    setError('');setBusy(true);
-    try{
-      const code=Crypto.randomUUID()+Crypto.randomUUID();
-      const shop=await getShopSettings(db,owner);
-      const invite=await createBusinessInvite(code,shop.shop_name||'Mama’s Shop',inviteEmail);
-      setInviteCode(code);setInviteExpiry(invite.expiresAt);
-      await Share.share({message:`You are invited to join ${shop.shop_name||'Mama’s Shop'} on Mama’s Shop. Create or sign in to your own account, then open Join a business and enter this code:\n\n${code}\n\nThis code expires in 14 days and can be used once.`});
-    }catch(value){setError(value instanceof Error?value.message:'Could not create the invitation.');}
-    finally{setBusy(false);}
-  };
-  return <Page title="Team" subtitle="Manage shop access and seller reporting." back>
-    <Card style={{gap:8}}><AppText variant="heading">Your account</AppText><AppText variant="label">{ownerName}</AppText><AppText variant="small" color={colors.secondary}>{session?.user.email||'Signed in account'}</AppText><StatusBadge label={isOwner?'Owner':'Staff member'} tone={isOwner?'purple':'green'}/></Card>
-    {isOwner?<Card style={{gap:12}}><AppText variant="heading">Invite staff</AppText><AppText variant="small" color={colors.secondary}>Each person signs in with their own account. The invitation grants staff access to this shop’s shared records.</AppText><Field label="Staff email (optional)" value={inviteEmail} onChangeText={setInviteEmail} placeholder="name@example.com" keyboardType="email-address" autoCapitalize="none" autoCorrect={false}/><PrimaryButton label={inviteCode?'Create another invitation':'Create invitation'} loading={busy} onPress={()=>void makeInvite()}/>{inviteCode?<View style={{gap:7}}><AppText variant="label">Invitation code</AppText><Text selectable style={{color:colors.deepPurple,fontFamily:'Inter-SemiBold'}}>{inviteCode}</Text><AppText variant="small" color={colors.secondary}>Expires {formatDateTime(inviteExpiry)} · one use</AppText></View>:null}</Card>:<Card style={{gap:8}}><AppText variant="heading">Shared shop access</AppText><AppText color={colors.secondary}>You joined this shop with your own staff account. Contact the owner if you need another invitation or access removed.</AppText></Card>}
-    <Card style={{gap:12}}><AppText variant="heading">Sellers</AppText><AppText variant="small" color={colors.secondary}>Completed sales are assigned to a staff member for reporting.</AppText>{rows.map((seller)=><View key={seller.id} style={styles.sellerRow}><View style={styles.sellerAvatar}><Users size={17} stroke={colors.deepPurple}/></View><View style={{flex:1}}><AppText variant="label">{seller.name}</AppText><AppText variant="small" color={colors.secondary}>{seller.is_owner?'Owner profile':seller.phone||'Seller profile'}</AppText></View><StatusBadge label={seller.is_owner?'Owner':'Active'} tone={seller.is_owner?'purple':'green'}/></View>)}{isOwner?<><View style={styles.sellerDivider}/><AppText variant="label">Add a seller profile</AppText><Field label="Seller name" value={name} onChangeText={setName} placeholder="e.g. Tinashe" autoCapitalize="words"/><Field label="Phone number (optional)" value={phone} onChangeText={setPhone} placeholder="+263 77 123 4567" keyboardType="phone-pad"/><PrimaryButton label="Add seller" onPress={()=>void add()} loading={busy}/></>:null}{error?<AppText variant="small" color={colors.danger}>{error}</AppText>:null}</Card>
-    <SettingsLink item={{title:'Activity log',detail:'Review recent shop changes',icon:ShieldCheck,path:'/settings/audit-log'}}/>
+
+  return <Page title="Shop settings" subtitle="Set your shop name and currency." back>
+    <Card style={{ gap: 12 }}>
+      <AppText variant="heading">Shop profile</AppText>
+      <Field label="Shop name" value={name} onChangeText={setName} placeholder="Mama’s Shop" />
+      <AppText variant="label">Currency</AppText>
+      <View style={styles.wrap}>{['USD', 'ZWL', 'ZAR', 'BWP'].map((code) => <Pressable key={code} onPress={() => setCurrency(code)} style={[styles.chip, currency === code && styles.selected]}><AppText variant="label" color={currency === code ? colors.deepPurple : colors.secondary}>{code}</AppText></Pressable>)}</View>
+      <Pressable onPress={() => setAlerts((value) => !value)} style={styles.toggleRow}><View style={{ flex: 1 }}><AppText variant="label">Low stock reminders</AppText><AppText variant="small" color={colors.secondary}>Highlight products that need restocking</AppText></View><StatusBadge label={alerts ? 'On' : 'Off'} tone={alerts ? 'green' : 'purple'} /></Pressable>
+      <PrimaryButton label={saved ? 'Saved' : 'Save shop settings'} loading={busy} onPress={save} />
+    </Card>
+    <Pressable onPress={() => router.push('/settings/sync')} style={styles.syncLink}><Database size={18} stroke={colors.purple} /><View style={{ flex: 1 }}><AppText variant="label">Sync status</AppText><AppText variant="small" color={colors.secondary}>Offline saves and cloud sync</AppText></View></Pressable>
   </Page>;
 }
-export function PaymentMethodsScreen(){return <Page title="Payment methods" subtitle="Select how you accept payments at checkout." back><Card style={{gap:12}}>{[{title:'Cash',detail:'Cash payments are available at checkout.'},{title:'EcoCash',detail:'Record mobile money payments.'},{title:'Card / Other',detail:'Record card or other payment types.'}].map(x=><View key={x.title} style={styles.location}><View style={{flex:1}}><AppText variant="label">{x.title}</AppText><AppText variant="small" color={colors.secondary}>{x.detail}</AppText></View><StatusBadge label="Available" tone="green"/></View>)}</Card><AppText variant="small" color={colors.secondary}>This setting page describes the built-in payment options. Payment gateway connections are not configured in this app.</AppText></Page>}
-export function NotificationsSettingsScreen(){const db=useSQLiteContext();const {session,businessId}=useAuth();const [enabled,setEnabled]=useState(true);useEffect(()=>{void getShopSettings(db,businessId??session?.user.id??'').then(s=>setEnabled(Boolean(s.low_stock_alerts)));},[db,session?.user.id]);const toggle=async()=>{const next=!enabled;setEnabled(next);const s=await getShopSettings(db,businessId??session?.user.id??'');await saveShopSettings(db,businessId??session?.user.id??'',s.shop_name,s.currency,next);};return <Page title="Notifications" subtitle="Choose the reminders you want to see." back><Pressable onPress={toggle}><Card style={styles.location}><View style={{flex:1}}><AppText variant="label">Low stock reminders</AppText><AppText variant="small" color={colors.secondary}>Highlight items that need restocking on your inventory screen.</AppText></View><StatusBadge label={enabled?'On':'Off'} tone={enabled?'green':'purple'}/></Card></Pressable><Card style={{gap:7}}><AppText variant="heading">Device alerts</AppText><AppText color={colors.secondary}>In-app stock indicators are active. Push notifications and email delivery have not been connected for this app.</AppText></Card></Page>}
+
 export function SyncSettingsScreen() {
   const db = useSQLiteContext();
   const { session, businessId } = useAuth();
@@ -92,10 +84,19 @@ function SyncConflictReview({ db, ownerId, onRetry }: { db: ReturnType<typeof us
   const [rows, setRows] = useState<{ idempotency_key: string; description: string; created_at: string }[]>([]);
   const [busy, setBusy] = useState(false);
   const load = async () => setRows(await db.getAllAsync<{ idempotency_key: string; description: string; created_at: string }>('SELECT idempotency_key, description, created_at FROM sync_conflicts WHERE owner_id = ? AND resolved_at IS NULL ORDER BY created_at DESC LIMIT 5', ownerId));
+  // eslint-disable-next-line react-hooks/set-state-in-effect, react-hooks/exhaustive-deps -- load unresolved conflicts from local SQLite when this screen opens.
   useEffect(() => { void load(); }, [db, ownerId]);
   const retry = async () => { setBusy(true); try { await retrySyncConflicts(db, ownerId); await load(); onRetry(); } finally { setBusy(false); } };
   return <Card style={{ gap: 10, borderColor: '#F1C7CC' }}><AppText variant="heading" color={colors.danger}>Changes to review</AppText>{rows.map((row) => <View key={row.idempotency_key} style={styles.conflictRow}><CircleHelp size={16} stroke={colors.danger} /><AppText variant="small" color={colors.secondary} style={{ flex: 1 }}>{row.description}</AppText></View>)}<AppText variant="small" color={colors.secondary}>Stock conflicts are kept here instead of overwriting a newer count or allowing negative stock. Fix the source issue, then retry.</AppText><PrimaryButton label={busy ? 'Retrying…' : 'Retry unresolved changes'} loading={busy} onPress={() => void retry()} />
   </Card>;
 }
-export function AuditLogScreen(){const db=useSQLiteContext();const {session,businessId}=useAuth();const [rows,setRows]=useState<{id:string;action:string;entity_type:string;description:string;created_at:string}[]>([]);useEffect(()=>{void listAuditLog(db,businessId??session?.user.id??'').then(setRows);},[db,businessId,session?.user.id]);return <Page title="Activity log" subtitle="A record of inventory and expense changes." back>{rows.map(r=><Card key={r.id} style={styles.location}><View style={{flex:1}}><AppText variant="label">{r.description}</AppText><AppText variant="small" color={colors.secondary}>{r.action} · {r.entity_type} · {formatDateTime(r.created_at)}</AppText></View></Card>)}{!rows.length?<Card style={{gap:8,alignItems:'center'}}><CircleHelp stroke={colors.lavender}/><AppText variant="heading">No activity recorded</AppText><AppText color={colors.secondary}>Product and expense changes will appear here.</AppText></Card>:null}</Page>}
-const styles=StyleSheet.create({wrap:{flexDirection:'row',flexWrap:'wrap',gap:8},chip:{borderWidth:1,borderColor:colors.border,borderRadius:12,paddingHorizontal:13,minHeight:40,justifyContent:'center'},selected:{borderColor:colors.purple,backgroundColor:colors.lavenderTint},toggleRow:{flexDirection:'row',alignItems:'center',gap:12,paddingVertical:8},link:{minHeight:64,flexDirection:'row',alignItems:'center',gap:10,borderBottomWidth:1,borderColor:colors.border,paddingVertical:8},icon:{width:37,height:37,borderRadius:12,backgroundColor:colors.lavenderTint,alignItems:'center',justifyContent:'center'},location:{flexDirection:'row',alignItems:'center',gap:10},sellerRow:{minHeight:54,flexDirection:'row',alignItems:'center',gap:10},sellerAvatar:{width:36,height:36,borderRadius:12,alignItems:'center',justifyContent:'center',backgroundColor:colors.lavenderTint},sellerDivider:{height:StyleSheet.hairlineWidth,backgroundColor:colors.border,marginVertical:2},conflictRow:{flexDirection:'row',alignItems:'flex-start',gap:8}});
+
+const styles = StyleSheet.create({
+  wrap: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  chip: { borderWidth: 1, borderColor: colors.border, borderRadius: 12, paddingHorizontal: 13, minHeight: 40, justifyContent: 'center' },
+  selected: { borderColor: colors.purple, backgroundColor: colors.lavenderTint },
+  toggleRow: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 8 },
+  syncLink: { minHeight: 58, flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 12, borderWidth: 1, borderColor: colors.border, borderRadius: 14, backgroundColor: '#FFFFFF' },
+  location: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  conflictRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 8 },
+});

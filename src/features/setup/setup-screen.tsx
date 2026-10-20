@@ -41,7 +41,7 @@ export function ShopSetupScreen() {
     } finally { setBusy(false); }
   };
   return <Page title="Set up your shop" subtitle="Name your shop and pick the currency you sell in. Everything works offline first.">
-    <Card style={styles.heroCard}><View style={styles.heroIcon}><Store size={24} stroke={colors.deepPurple} /></View><AppText variant="heading">Welcome to Mama’s Shop</AppText><AppText color={colors.secondary}>This takes about a minute. We create your main stock location and your owner seller profile, so sales and reports are correct from the first receipt.</AppText></Card>
+    <Card style={styles.heroCard}><View style={styles.heroIcon}><Store size={24} stroke={colors.deepPurple} /></View><AppText variant="heading">Welcome to Mama’s Shop</AppText><AppText color={colors.secondary}>This takes about a minute. We create your main stock location and owner profile, so you can start recording sales and stock straight away.</AppText></Card>
     <Card style={styles.formCard}>
       <Field label="Shop name" placeholder="e.g. Mama’s Corner Shop" value={name} onChangeText={(value) => { setName(value); if (error) setError(''); }} autoCapitalize="words" returnKeyType="done" />
       <View style={styles.currencyBlock}>

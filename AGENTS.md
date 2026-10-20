@@ -33,7 +33,7 @@ Run lint and typecheck before declaring any task done.
 
 - Organize product code by business feature under `src/features/<feature>/`. Keep a feature's components, hooks, schemas, and domain logic together; share code only when it is genuinely used by multiple features.
 - `src/app/` is the Expo Router route registry. Route files should stay thin: render a screen owned by `src/features/` or shared UI from `src/components/`. Keep data access and business logic out of route files.
-- Route groups `(auth)` and `(tabs)` organize navigation without changing URLs. Feature routes such as sales, inventory, credit, expenses, reports, and settings live in their matching route folders under `src/app/`.
+- Route groups `(auth)` and `(tabs)` organize navigation without changing URLs. Keep the initial product scope focused on sales, inventory, and customer credit. Supporting routes such as checkout, sales history, stock actions, customer accounts, shop setup, and sync status live under `src/app/`; add new feature route groups only when they are part of the agreed product scope.
 - Shared presentational components belong in `src/components/` (ui, charts, forms, feedback, layout). Cross-cutting hooks, constants, types, and utilities belong in `src/hooks/`, `src/constants/`, `src/types/`, and `src/lib/`.
 - Database schema/client/repositories belong in `src/db/`; external service adapters and background synchronization belong in `src/services/`; app-wide client state belongs in `src/stores/`.
 - Supabase migrations and Edge Functions belong in `supabase/migrations/` and `supabase/functions/`. Keep secrets out of source control; document required public configuration in `.env.example`.
