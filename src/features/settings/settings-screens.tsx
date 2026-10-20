@@ -7,7 +7,7 @@ import { useAuth } from '@/features/auth/auth-context';
 import { getShopSettings, saveShopSettings } from '@/db/repositories/settings';
 import { colors } from '@/constants/theme';
 import { formatDateTime, setAppCurrency } from '@/lib/format';
-import { AppText, Card, Field, Page, PrimaryButton, SecondaryButton, StatusBadge } from '@/components/ui/primitives';
+import { AppText, Card, Field, Page, PrimaryButton, StatusBadge } from '@/components/ui/primitives';
 import { useSyncStatus } from '@/features/sync/sync-context';
 import { retrySyncConflicts } from '@/services/sync-engine';
 import { supabase } from '@/lib/supabase';
@@ -198,7 +198,7 @@ export function HelpAndSupportScreen() {
             >
               <View className="flex-row items-center justify-between gap-3">
                 <AppText variant="label" style={{ flex: 1 }}>{question}</AppText>
-                <ChevronDown size={18} color={colors.secondary} />
+                <ChevronDown size={18} color={colors.secondary} className={expanded ? 'rotate-180' : ''} />
               </View>
               {expanded ? <AppText color={colors.secondary} style={{ marginTop: 9, lineHeight: 21 }}>{answer}</AppText> : null}
             </Pressable>;
