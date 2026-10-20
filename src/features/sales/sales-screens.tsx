@@ -1,9 +1,11 @@
 import { IllustratedEmptyState } from "@/components/feedback/illustrated-empty-state";
 import {
   AppText,
+  Card,
   Field,
   Page,
   PrimaryButton,
+  SecondaryButton,
   SectionTitle,
   StatusBadge,
 } from "@/components/ui/primitives";
@@ -48,11 +50,24 @@ import {
   MapPin,
   Users,
 } from "lucide-react-native";
-import { ensurePrimaryLocation, listLocations } from "@/db/repositories/inventory";
-import { ensureOwnerSeller, ensureUserSeller, listSellers } from "@/db/repositories/sellers";
+import {
+  ensurePrimaryLocation,
+  listLocations,
+} from "@/db/repositories/inventory";
+import {
+  ensureOwnerSeller,
+  ensureUserSeller,
+  listSellers,
+} from "@/db/repositories/sellers";
 import { useSyncStatus } from "@/features/sync/sync-context";
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import {
+  getDailyPaymentBreakdown,
+  getDashboardData,
+  type DailyPaymentBreakdown,
+  type DashboardData,
+} from "@/db/repositories/dashboard";
 import {
   ActivityIndicator,
   Alert,
@@ -70,8 +85,14 @@ import {
 
 function saleCategory(product: Product) {
   const value = `${product.name} ${product.category}`.toLocaleLowerCase();
-  if (/drink|beverage|water|maheu|mahewu|mahero|juice|soda/.test(value)) return "Drinks";
-  if (/household|clean|soap|detergent|toilet|tissue|personal care|shampoo/.test(value)) return "Household";
+  if (/drink|beverage|water|maheu|mahewu|mahero|juice|soda/.test(value))
+    return "Drinks";
+  if (
+    /household|clean|soap|detergent|toilet|tissue|personal care|shampoo/.test(
+      value,
+    )
+  )
+    return "Household";
   return "Groceries";
 }
 
@@ -88,7 +109,10 @@ function addLocalDays(date: Date, days: number) {
   return result;
 }
 
-function getHistoryDateBounds(filter: HistoryDateFilter, customRange: DateRange | null) {
+function getHistoryDateBounds(
+  filter: HistoryDateFilter,
+  customRange: DateRange | null,
+) {
   const today = startOfLocalDay(new Date());
   if (filter === "CUSTOM" && customRange) {
     return {
@@ -97,21 +121,35 @@ function getHistoryDateBounds(filter: HistoryDateFilter, customRange: DateRange 
     };
   }
   const days = filter === "TODAY" ? 1 : filter === "7_DAYS" ? 7 : 30;
-  return { start: addLocalDays(today, 1 - days), endExclusive: addLocalDays(today, 1) };
+  return {
+    start: addLocalDays(today, 1 - days),
+    endExclusive: addLocalDays(today, 1),
+  };
 }
 
 function getCalendarDays(month: Date) {
   const firstDay = new Date(month.getFullYear(), month.getMonth(), 1);
   const offset = firstDay.getDay();
-  const dayCount = new Date(month.getFullYear(), month.getMonth() + 1, 0).getDate();
+  const dayCount = new Date(
+    month.getFullYear(),
+    month.getMonth() + 1,
+    0,
+  ).getDate();
   const cellCount = Math.ceil((offset + dayCount) / 7) * 7;
-  return Array.from({ length: cellCount }, (_, index) =>
-    new Date(month.getFullYear(), month.getMonth(), index - offset + 1),
+  return Array.from(
+    { length: cellCount },
+    (_, index) =>
+      new Date(month.getFullYear(), month.getMonth(), index - offset + 1),
   );
 }
 
 function sameLocalDay(left: Date | null, right: Date) {
-  return Boolean(left && left.getFullYear() === right.getFullYear() && left.getMonth() === right.getMonth() && left.getDate() === right.getDate());
+  return Boolean(
+    left &&
+    left.getFullYear() === right.getFullYear() &&
+    left.getMonth() === right.getMonth() &&
+    left.getDate() === right.getDate(),
+  );
 }
 
 function shortCalendarDate(date: Date) {
@@ -121,10 +159,16 @@ function shortCalendarDate(date: Date) {
 function formatSaleTime(value: string) {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return "—";
-  return new Intl.DateTimeFormat("en-ZW", { hour: "2-digit", minute: "2-digit" }).format(date);
+  return new Intl.DateTimeFormat("en-ZW", {
+    hour: "2-digit",
+    minute: "2-digit",
+  }).format(date);
 }
 
-function formatPaymentMethod(method: string | null | undefined, status: SaleSummary["status"]) {
+function formatPaymentMethod(
+  method: string | null | undefined,
+  status: SaleSummary["status"],
+) {
   if (!method) return status === "CREDIT" ? "Credit" : "Cash";
   if (method === "ECOCASH") return "EcoCash";
   if (method === "CARD") return "Card";
@@ -140,9 +184,236 @@ const salesCategoryIcons: Record<string, typeof Boxes> = {
   Household: Package,
 };
 
+const dailyPaymentRows: {
+  label: string;
+  method: keyof DailyPaymentBreakdown;
+  color: string;
+}[] = [
+  { label: "Cash", method: "CASH", color: colors.success },
+  { label: "EcoCash", method: "ECOCASH", color: colors.info },
+  { label: "Card", method: "CARD", color: colors.purple },
+  { label: "Other", method: "OTHER", color: colors.secondary },
+];
+
+function formatDailySummaryDate(date: Date) {
+  return new Intl.DateTimeFormat("en-ZW", {
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+  }).format(date);
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // SalesScreen
 // ─────────────────────────────────────────────────────────────────────────────
+
+export function DailySummaryScreen() {
+  const db = useSQLiteContext();
+  const { session, businessId } = useAuth();
+  const { revision } = useSyncStatus();
+  const ownerId = businessId ?? session?.user.id ?? "";
+  const [summary, setSummary] = useState<DashboardData | null>(null);
+  const [payments, setPayments] = useState<DailyPaymentBreakdown>({
+    CASH: 0,
+    ECOCASH: 0,
+    CARD: 0,
+    OTHER: 0,
+  });
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [error, setError] = useState("");
+
+  const load = useCallback(async () => {
+    setRefreshing(true);
+    setError("");
+    try {
+      const [nextSummary, nextPayments] = await Promise.all([
+        getDashboardData(db, ownerId),
+        getDailyPaymentBreakdown(db, ownerId),
+      ]);
+      setSummary(nextSummary);
+      setPayments(nextPayments);
+    } catch (reason) {
+      setError(
+        reason instanceof Error
+          ? reason.message
+          : "Daily summary could not be loaded.",
+      );
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
+  }, [db, ownerId]);
+
+  useEffect(() => {
+    void load();
+  }, [load, revision]);
+
+  const total = summary?.salesTodayCents ?? 0;
+  const rows = [
+    ...dailyPaymentRows.map((row) => ({
+      ...row,
+      amount: payments[row.method],
+    })),
+    {
+      label: "Credit",
+      method: "CREDIT" as const,
+      color: colors.warning,
+      amount: summary?.creditGivenTodayCents ?? 0,
+    },
+  ];
+
+  return (
+    <Page
+      title="Daily Summary"
+      subtitle={formatDailySummaryDate(new Date())}
+      back
+      scroll={false}
+      contentStyle={{ flex: 1 }}
+    >
+      <ScrollView
+        style={{ flex: 1 }}
+        contentContainerStyle={{ gap: 14, paddingBottom: 16 }}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={load}
+            tintColor={colors.purple}
+          />
+        }
+        showsVerticalScrollIndicator={false}
+      >
+        <Card style={{ gap: 12, padding: 15 }}>
+          <View style={{ gap: 4 }}>
+            <AppText variant="small" color={colors.secondary}>
+              Total Sales
+            </AppText>
+            <AppText
+              variant="amount"
+              color={colors.deepPurple}
+              style={{ fontSize: 27 }}
+            >
+              {formatMoney(total)}
+            </AppText>
+            <AppText variant="small" color={colors.success}>
+              {summary?.salesYesterdayCents
+                ? `${Math.round(((total - summary.salesYesterdayCents) / summary.salesYesterdayCents) * 100)}% vs yesterday`
+                : total > 0
+                  ? "First sales today"
+                  : "No sales yet today"}
+            </AppText>
+          </View>
+          <View
+            style={{
+              height: StyleSheet.hairlineWidth,
+              backgroundColor: colors.border,
+            }}
+          />
+          <View style={{ gap: 2 }}>
+            {rows.map((row) => {
+              const percent =
+                total > 0 ? Math.round((row.amount / total) * 100) : 0;
+              return (
+                <View key={row.label} style={st.summaryPaymentRow}>
+                  <View
+                    style={{
+                      flex: 1,
+                      flexDirection: "row",
+                      alignItems: "center",
+                      gap: 8,
+                    }}
+                  >
+                    <View
+                      style={{
+                        width: 8,
+                        height: 8,
+                        borderRadius: 4,
+                        backgroundColor: row.color,
+                      }}
+                    />
+                    <AppText variant="small" color={colors.secondary}>
+                      {row.label}
+                    </AppText>
+                  </View>
+                  <AppText
+                    variant="label"
+                    style={{ minWidth: 82, textAlign: "right" }}
+                  >
+                    {formatMoney(row.amount)}
+                  </AppText>
+                  <AppText
+                    variant="small"
+                    color={colors.secondary}
+                    style={{ width: 40, textAlign: "right" }}
+                  >
+                    {percent}%
+                  </AppText>
+                </View>
+              );
+            })}
+          </View>
+        </Card>
+
+        <View style={{ flexDirection: "row", gap: 10 }}>
+          <Pressable
+            accessibilityRole="button"
+            onPress={() => router.push("/(tabs)/inventory")}
+            style={[st.summaryAlert, { backgroundColor: "#F6F8FF" }]}
+          >
+            <View style={[st.summaryAlertIcon, { backgroundColor: "#FCEBED" }]}>
+              <Boxes size={16} color={colors.danger} />
+            </View>
+            <View style={{ flex: 1 }}>
+              <AppText variant="small" color={colors.secondary}>
+                Stock Alerts
+              </AppText>
+              <AppText variant="label">
+                {summary?.lowStockCount ?? 0} items
+              </AppText>
+            </View>
+            <ChevronRight size={16} color={colors.secondary} />
+          </Pressable>
+          <Pressable
+            accessibilityRole="button"
+            onPress={() => router.push("/(tabs)/credit")}
+            style={[st.summaryAlert, { backgroundColor: "#F6F8FF" }]}
+          >
+            <View style={[st.summaryAlertIcon, { backgroundColor: "#EAF2FF" }]}>
+              <Users size={16} color={colors.info} />
+            </View>
+            <View style={{ flex: 1 }}>
+              <AppText variant="small" color={colors.secondary}>
+                Customers Owing
+              </AppText>
+              <AppText variant="label">
+                {summary?.owingCustomerCount ?? 0} customers
+              </AppText>
+            </View>
+            <ChevronRight size={16} color={colors.secondary} />
+          </Pressable>
+        </View>
+
+        {loading && !summary ? (
+          <AppText variant="small" color={colors.secondary}>
+            Loading daily summary…
+          </AppText>
+        ) : null}
+        {error ? (
+          <View style={{ gap: 8 }}>
+            <AppText variant="small" color={colors.danger}>
+              {error}
+            </AppText>
+            <SecondaryButton label="Try again" onPress={() => void load()} />
+          </View>
+        ) : null}
+        <PrimaryButton
+          label="View Full Report"
+          onPress={() => router.push("/sales/history")}
+        />
+      </ScrollView>
+    </Page>
+  );
+}
 
 export function SalesScreen() {
   const db = useSQLiteContext();
@@ -163,39 +434,82 @@ export function SalesScreen() {
   const setSellerId = useCart((s) => s.setSellerId);
   const addProduct = useCart((s) => s.addProduct);
 
-  const total = lines.reduce((sum, l) => sum + Math.round(l.priceCents * l.quantity), 0);
+  const total = lines.reduce(
+    (sum, l) => sum + Math.round(l.priceCents * l.quantity),
+    0,
+  );
   const itemCount = lines.reduce((n, l) => n + l.quantity, 0);
 
   useEffect(() => {
     let active = true;
-    const ownerName = String(session?.user.user_metadata?.full_name ?? session?.user.email?.split("@")[0] ?? "Shop owner");
+    const ownerName = String(
+      session?.user.user_metadata?.full_name ??
+        session?.user.email?.split("@")[0] ??
+        "Shop owner",
+    );
     void (async () => {
       const isOwner = Boolean(session && businessId === session.user.id);
       const primary = isOwner ? await ensurePrimaryLocation(db, ownerId) : null;
       const currentSeller = isOwner
         ? await ensureOwnerSeller(db, ownerId, ownerName)
-        : session ? await ensureUserSeller(db, ownerId, session.user.id, ownerName) : null;
-      const [locationRows, sellerRows] = await Promise.all([listLocations(db, ownerId), listSellers(db, ownerId)]);
+        : session
+          ? await ensureUserSeller(db, ownerId, session.user.id, ownerName)
+          : null;
+      const [locationRows, sellerRows] = await Promise.all([
+        listLocations(db, ownerId),
+        listSellers(db, ownerId),
+      ]);
       if (!active) return;
-      if (!locationRows.some((l) => l.id === locationId)) setLocationId(primary?.id ?? locationRows[0]?.id ?? null);
-      if (!sellerRows.some((s) => s.id === sellerId)) setSellerId(currentSeller?.id ?? null);
+      if (!locationRows.some((l) => l.id === locationId))
+        setLocationId(primary?.id ?? locationRows[0]?.id ?? null);
+      if (!sellerRows.some((s) => s.id === sellerId))
+        setSellerId(currentSeller?.id ?? null);
     })().catch(() => {});
-    return () => { active = false; };
-  }, [db, ownerId, businessId, session, session?.user.id, session?.user.email, session?.user.user_metadata?.full_name, locationId, sellerId, setLocationId, setSellerId, revision]);
+    return () => {
+      active = false;
+    };
+  }, [
+    db,
+    ownerId,
+    businessId,
+    session,
+    session?.user.id,
+    session?.user.email,
+    session?.user.user_metadata?.full_name,
+    locationId,
+    sellerId,
+    setLocationId,
+    setSellerId,
+    revision,
+  ]);
 
   useEffect(() => {
     let active = true;
-    void listProductsForSale(db, ownerId, search, locationId).then((data) => {
-      if (active) { setProductLoadError(""); setRows(data); }
-    }).catch((e: unknown) => {
-      if (active) setProductLoadError(e instanceof Error ? e.message : "Products could not be loaded.");
-    });
-    return () => { active = false; };
+    void listProductsForSale(db, ownerId, search, locationId)
+      .then((data) => {
+        if (active) {
+          setProductLoadError("");
+          setRows(data);
+        }
+      })
+      .catch((e: unknown) => {
+        if (active)
+          setProductLoadError(
+            e instanceof Error ? e.message : "Products could not be loaded.",
+          );
+      });
+    return () => {
+      active = false;
+    };
   }, [db, ownerId, search, locationId, revision, productRetry]);
 
-  const categories = useMemo(() => ["All", "Groceries", "Drinks", "Household"], []);
+  const categories = useMemo(
+    () => ["All", "Groceries", "Drinks", "Household"],
+    [],
+  );
   const visibleRows = useMemo(
-    () => rows.filter((p) => category === "All" || saleCategory(p) === category),
+    () =>
+      rows.filter((p) => category === "All" || saleCategory(p) === category),
     [category, rows],
   );
 
@@ -247,8 +561,15 @@ export function SalesScreen() {
                 onPress={() => setCategory(item)}
                 className={`flex-row items-center gap-1.5 rounded-full border px-3.5 py-2 active:opacity-80 ${active ? "border-brand bg-brand" : "border-line bg-surface"}`}
               >
-                <Icon size={13} color={active ? colors.surface : colors.secondary} />
-                <AppText variant="small" color={active ? colors.surface : colors.secondary} style={{ fontSize: 12 }}>
+                <Icon
+                  size={13}
+                  color={active ? colors.surface : colors.secondary}
+                />
+                <AppText
+                  variant="small"
+                  color={active ? colors.surface : colors.secondary}
+                  style={{ fontSize: 12 }}
+                >
                   {item}
                 </AppText>
               </Pressable>
@@ -259,9 +580,16 @@ export function SalesScreen() {
         {/* Error state */}
         {productLoadError ? (
           <View className="gap-2 rounded-2xl bg-danger/10 p-3">
-            <AppText variant="small" color={colors.danger}>{productLoadError}</AppText>
-            <Pressable accessibilityRole="button" onPress={() => setProductRetry((v) => v + 1)}>
-              <AppText variant="label" color={colors.deepPurple}>Retry loading products</AppText>
+            <AppText variant="small" color={colors.danger}>
+              {productLoadError}
+            </AppText>
+            <Pressable
+              accessibilityRole="button"
+              onPress={() => setProductRetry((v) => v + 1)}
+            >
+              <AppText variant="label" color={colors.deepPurple}>
+                Retry loading products
+              </AppText>
             </Pressable>
           </View>
         ) : null}
@@ -270,7 +598,13 @@ export function SalesScreen() {
         {!visibleRows.length ? (
           <IllustratedEmptyState
             image={require("@/assets/images/shop-illustrations/inventory/empty-cart.png")}
-            title={rows.length ? "No products in this category" : search ? "No matching products" : "No products ready to sell"}
+            title={
+              rows.length
+                ? "No products in this category"
+                : search
+                  ? "No matching products"
+                  : "No products ready to sell"
+            }
             description={
               rows.length
                 ? "Choose another category to see available products."
@@ -280,8 +614,20 @@ export function SalesScreen() {
             }
             action={
               <PrimaryButton
-                label={rows.length ? "Show all products" : search ? "Clear search" : "Open inventory"}
-                onPress={rows.length ? () => setCategory("All") : search ? () => setSearch("") : () => router.push("/(tabs)/inventory")}
+                label={
+                  rows.length
+                    ? "Show all products"
+                    : search
+                      ? "Clear search"
+                      : "Open inventory"
+                }
+                onPress={
+                  rows.length
+                    ? () => setCategory("All")
+                    : search
+                      ? () => setSearch("")
+                      : () => router.push("/(tabs)/inventory")
+                }
               />
             }
           />
@@ -315,24 +661,47 @@ export function SalesScreen() {
 
                   {/* Name + price */}
                   <View className="min-w-0 flex-1 gap-0.5">
-                    <AppText variant="label" numberOfLines={1} style={{ fontSize: 13 }}>
+                    <AppText
+                      variant="label"
+                      numberOfLines={1}
+                      style={{ fontSize: 13 }}
+                    >
                       {product.name}
                     </AppText>
-                    <AppText variant="small" color={colors.purple} style={{ fontSize: 12 }}>
+                    <AppText
+                      variant="small"
+                      color={colors.purple}
+                      style={{ fontSize: 12 }}
+                    >
                       {formatMoney(product.price_cents)}
                     </AppText>
                   </View>
 
                   {/* Stock */}
-                  <AppText variant="small" color={colors.secondary} style={{ fontSize: 10 }} numberOfLines={1}>
+                  <AppText
+                    variant="small"
+                    color={colors.secondary}
+                    style={{ fontSize: 10 }}
+                    numberOfLines={1}
+                  >
                     {product.stock_quantity} {product.unit}
                   </AppText>
 
                   {/* Add / qty badge */}
-                  <View className={`h-9 w-9 items-center justify-center rounded-full ${inCart ? "bg-brand-deep" : "bg-brand"}`}>
-                    {inCart
-                      ? <AppText variant="label" color={colors.surface} style={{ fontSize: 12 }}>{inCart.quantity}</AppText>
-                      : <Plus size={17} color={colors.surface} />}
+                  <View
+                    className={`h-9 w-9 items-center justify-center rounded-full ${inCart ? "bg-brand-deep" : "bg-brand"}`}
+                  >
+                    {inCart ? (
+                      <AppText
+                        variant="label"
+                        color={colors.surface}
+                        style={{ fontSize: 12 }}
+                      >
+                        {inCart.quantity}
+                      </AppText>
+                    ) : (
+                      <Plus size={17} color={colors.surface} />
+                    )}
                   </View>
                 </Pressable>
               );
@@ -348,19 +717,38 @@ export function SalesScreen() {
           accessibilityLabel={`Review sale, ${itemCount} ${itemCount === 1 ? "item" : "items"}, ${formatMoney(total)}`}
           onPress={() => router.push("/sales/checkout")}
           className="flex-row items-center gap-3 rounded-2xl bg-brand px-3 py-2.5 active:opacity-85"
-          style={{ shadowColor: colors.deepPurple, shadowOpacity: 0.35, shadowRadius: 16, shadowOffset: { width: 0, height: 6 }, elevation: 8 }}
+          style={{
+            shadowColor: colors.deepPurple,
+            shadowOpacity: 0.35,
+            shadowRadius: 16,
+            shadowOffset: { width: 0, height: 6 },
+            elevation: 8,
+          }}
         >
           <View className="h-10 w-10 items-center justify-center rounded-xl bg-brand-deep">
             <ShoppingCart size={20} color={colors.surface} />
           </View>
           <View className="min-w-0 flex-1 gap-0.5">
-            <AppText variant="small" color={colors.surface} style={{ fontSize: 11 }}>
-              {itemCount} {itemCount === 1 ? "item" : "items"}{creditMode ? " · Credit sale" : ""}
+            <AppText
+              variant="small"
+              color={colors.surface}
+              style={{ fontSize: 11 }}
+            >
+              {itemCount} {itemCount === 1 ? "item" : "items"}
+              {creditMode ? " · Credit sale" : ""}
             </AppText>
-            <AppText variant="label" color={colors.surface}>{formatMoney(total)}</AppText>
+            <AppText variant="label" color={colors.surface}>
+              {formatMoney(total)}
+            </AppText>
           </View>
           <View className="flex-row items-center gap-1">
-            <AppText variant="small" color={colors.surface} style={{ fontSize: 11 }}>Review</AppText>
+            <AppText
+              variant="small"
+              color={colors.surface}
+              style={{ fontSize: 11 }}
+            >
+              Review
+            </AppText>
             <ChevronRight size={17} color={colors.surface} />
           </View>
         </Pressable>
@@ -373,10 +761,30 @@ export function SalesScreen() {
 // CheckoutScreen
 // ─────────────────────────────────────────────────────────────────────────────
 
-const paymentMethods: { key: PaymentMethod; label: string; detail: string; icon: React.ReactNode }[] = [
-  { key: "CASH",    label: "Cash",      detail: "Paid in person",  icon: <Banknote  size={18} color={colors.success} /> },
-  { key: "ECOCASH", label: "EcoCash",   detail: "Mobile money",    icon: <Smartphone size={18} color={colors.info} /> },
-  { key: "CARD",    label: "Card",      detail: "Other payment",   icon: <CreditCard size={18} color={colors.purple} /> },
+const paymentMethods: {
+  key: PaymentMethod;
+  label: string;
+  detail: string;
+  icon: React.ReactNode;
+}[] = [
+  {
+    key: "CASH",
+    label: "Cash",
+    detail: "Paid in person",
+    icon: <Banknote size={18} color={colors.success} />,
+  },
+  {
+    key: "ECOCASH",
+    label: "EcoCash",
+    detail: "Mobile money",
+    icon: <Smartphone size={18} color={colors.info} />,
+  },
+  {
+    key: "CARD",
+    label: "Card",
+    detail: "Other payment",
+    icon: <CreditCard size={18} color={colors.purple} />,
+  },
 ];
 
 export function CheckoutScreen() {
@@ -385,60 +793,109 @@ export function CheckoutScreen() {
   const { session, businessId } = useAuth();
   const ownerId = businessId ?? session?.user.id ?? "";
 
-  const lines      = useCart((s) => s.lines);
+  const lines = useCart((s) => s.lines);
   const customerId = useCart((s) => s.customerId);
   const creditMode = useCart((s) => s.creditMode);
-  const sellerId   = useCart((s) => s.sellerId);
+  const sellerId = useCart((s) => s.sellerId);
   const locationId = useCart((s) => s.locationId);
-  const clear      = useCart((s) => s.clear);
+  const clear = useCart((s) => s.clear);
 
-  const [customer, setCustomer]         = useState<Customer | null>(null);
-  const [sellerName, setSellerName]     = useState("");
+  const [customer, setCustomer] = useState<Customer | null>(null);
+  const [sellerName, setSellerName] = useState("");
   const [locationName, setLocationName] = useState("");
-  const [method, setMethod]             = useState<PaymentMethod>("CASH");
-  const [changeDisp, setChangeDisp]     = useState<"GIVEN" | "OWED">("GIVEN");
-  const [paidAmount, setPaidAmount]     = useState<string | null>(null);
-  const [busy, setBusy]                 = useState(false);
-  const [error, setError]               = useState("");
-  const [lookupError, setLookupError]   = useState("");
-  const [lookupRetry, setLookupRetry]   = useState(0);
+  const [method, setMethod] = useState<PaymentMethod>("CASH");
+  const [changeDisp, setChangeDisp] = useState<"GIVEN" | "OWED">("GIVEN");
+  const [paidAmount, setPaidAmount] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const [lookupError, setLookupError] = useState("");
+  const [lookupRetry, setLookupRetry] = useState(0);
 
-  const total = useMemo(() => lines.reduce((s, l) => s + Math.round(l.priceCents * l.quantity), 0), [lines]);
+  const total = useMemo(
+    () => lines.reduce((s, l) => s + Math.round(l.priceCents * l.quantity), 0),
+    [lines],
+  );
   const suggested = (total / 100).toFixed(2);
-  const tendered  = Math.max(0, toCents(paidAmount ?? suggested));
-  const paid      = Math.min(tendered, total);
-  const balance   = Math.max(0, total - paid);
-  const change    = method === "CASH" ? Math.max(0, tendered - total) : 0;
+  const tendered = Math.max(0, toCents(paidAmount ?? suggested));
+  const paid = Math.min(tendered, total);
+  const balance = Math.max(0, total - paid);
+  const change = method === "CASH" ? Math.max(0, tendered - total) : 0;
 
   useEffect(() => {
     let active = true;
-    void (customerId ? getCustomer(db, ownerId, customerId) : Promise.resolve(null)).then((v) => {
-      if (active) { setLookupError(""); setCustomer(v); if (customerId && !v) setLookupError("Customer not found on this device."); }
-    }).catch((e: unknown) => { if (active) setLookupError(e instanceof Error ? e.message : "Customer could not be loaded."); });
-    return () => { active = false; };
+    void (
+      customerId ? getCustomer(db, ownerId, customerId) : Promise.resolve(null)
+    )
+      .then((v) => {
+        if (active) {
+          setLookupError("");
+          setCustomer(v);
+          if (customerId && !v)
+            setLookupError("Customer not found on this device.");
+        }
+      })
+      .catch((e: unknown) => {
+        if (active)
+          setLookupError(
+            e instanceof Error ? e.message : "Customer could not be loaded.",
+          );
+      });
+    return () => {
+      active = false;
+    };
   }, [db, ownerId, customerId, lookupRetry]);
 
   useEffect(() => {
     let active = true;
-    void Promise.all([listSellers(db, ownerId), listLocations(db, ownerId)]).then(([sellers, locations]) => {
-      if (!active) return;
-      setLookupError("");
-      setSellerName(sellers.find((s) => s.id === sellerId)?.name ?? "Choose seller");
-      setLocationName(locations.find((l) => l.id === locationId)?.name ?? "Choose location");
-    }).catch((e: unknown) => { if (active) setLookupError(e instanceof Error ? e.message : "Seller/location could not be loaded."); });
-    return () => { active = false; };
+    void Promise.all([listSellers(db, ownerId), listLocations(db, ownerId)])
+      .then(([sellers, locations]) => {
+        if (!active) return;
+        setLookupError("");
+        setSellerName(
+          sellers.find((s) => s.id === sellerId)?.name ?? "Choose seller",
+        );
+        setLocationName(
+          locations.find((l) => l.id === locationId)?.name ?? "Choose location",
+        );
+      })
+      .catch((e: unknown) => {
+        if (active)
+          setLookupError(
+            e instanceof Error
+              ? e.message
+              : "Seller/location could not be loaded.",
+          );
+      });
+    return () => {
+      active = false;
+    };
   }, [db, ownerId, sellerId, locationId, lookupRetry]);
 
   const completeSale = async () => {
     setError("");
-    if (!lines.length)                                                    { setError("Add a product before completing the sale."); return; }
-    if (creditMode && !customerId)                                        { setError("Choose a customer for this credit sale."); return; }
-    if (!customerId && balance > 0)                                       { setError("Choose a customer before leaving an amount unpaid."); return; }
-    if (changeDisp === "OWED" && change > 0 && !customerId)              { setError("Choose the customer who will collect their change later."); return; }
+    if (!lines.length) {
+      setError("Add a product before completing the sale.");
+      return;
+    }
+    if (creditMode && !customerId) {
+      setError("Choose a customer for this credit sale.");
+      return;
+    }
+    if (!customerId && balance > 0) {
+      setError("Choose a customer before leaving an amount unpaid.");
+      return;
+    }
+    if (changeDisp === "OWED" && change > 0 && !customerId) {
+      setError("Choose the customer who will collect their change later.");
+      return;
+    }
     setBusy(true);
     try {
       const result = await recordSale(db, {
-        items: lines.map((l) => ({ productId: l.productId, quantity: l.quantity })),
+        items: lines.map((l) => ({
+          productId: l.productId,
+          quantity: l.quantity,
+        })),
         customerId,
         amountPaidCents: paid,
         amountTenderedCents: tendered,
@@ -454,7 +911,7 @@ export function CheckoutScreen() {
         "Sale saved",
         result.balanceCents > 0
           ? `Balance of ${formatMoney(result.balanceCents)} added to ${customer?.name ?? "the customer account"}.`
-          : `Receipt ${result.receiptNumber} is ready.${change > 0 ? changeDisp === "OWED" ? ` ${formatMoney(change)} change recorded for ${customer?.name ?? "the customer"} to collect later.` : ` Give ${formatMoney(change)} change now.` : ""}`,
+          : `Receipt ${result.receiptNumber} is ready.${change > 0 ? (changeDisp === "OWED" ? ` ${formatMoney(change)} change recorded for ${customer?.name ?? "the customer"} to collect later.` : ` Give ${formatMoney(change)} change now.`) : ""}`,
       );
       router.replace("/sales/history");
     } catch (e) {
@@ -464,10 +921,19 @@ export function CheckoutScreen() {
     }
   };
 
-  const canComplete = lines.length > 0 && !(balance > 0 && !customerId) && !(changeDisp === "OWED" && change > 0 && !customerId);
+  const canComplete =
+    lines.length > 0 &&
+    !(balance > 0 && !customerId) &&
+    !(changeDisp === "OWED" && change > 0 && !customerId);
 
   return (
-    <Page title="Complete sale" subtitle="Check the basket, then record payment." back scroll={false} contentStyle={st.checkoutPage}>
+    <Page
+      title="Complete sale"
+      subtitle="Check the basket, then record payment."
+      back
+      scroll={false}
+      contentStyle={st.checkoutPage}
+    >
       <ScrollView
         style={st.checkoutScroller}
         contentContainerStyle={st.checkoutContent}
@@ -478,14 +944,38 @@ export function CheckoutScreen() {
         <View className="gap-0 overflow-hidden rounded-2xl border border-line bg-surface">
           <View className="flex-row items-center gap-2.5 px-4 py-3">
             <MapPin size={16} color={colors.deepPurple} />
-            <AppText variant="small" color={colors.secondary} style={{ fontSize: 12 }}>Selling from</AppText>
-            <AppText variant="label" numberOfLines={1} style={{ flex: 1, textAlign: "right", fontSize: 13 }}>{locationName}</AppText>
+            <AppText
+              variant="small"
+              color={colors.secondary}
+              style={{ fontSize: 12 }}
+            >
+              Selling from
+            </AppText>
+            <AppText
+              variant="label"
+              numberOfLines={1}
+              style={{ flex: 1, textAlign: "right", fontSize: 13 }}
+            >
+              {locationName}
+            </AppText>
           </View>
           <View className="mx-4 h-px bg-line" />
           <View className="flex-row items-center gap-2.5 px-4 py-3">
             <Users size={16} color={colors.deepPurple} />
-            <AppText variant="small" color={colors.secondary} style={{ fontSize: 12 }}>Seller</AppText>
-            <AppText variant="label" numberOfLines={1} style={{ flex: 1, textAlign: "right", fontSize: 13 }}>{sellerName}</AppText>
+            <AppText
+              variant="small"
+              color={colors.secondary}
+              style={{ fontSize: 12 }}
+            >
+              Seller
+            </AppText>
+            <AppText
+              variant="label"
+              numberOfLines={1}
+              style={{ flex: 1, textAlign: "right", fontSize: 13 }}
+            >
+              {sellerName}
+            </AppText>
           </View>
         </View>
 
@@ -495,72 +985,127 @@ export function CheckoutScreen() {
           {lines.map((line, idx) => {
             const isLast = idx === lines.length - 1;
             return (
-              <View key={line.productId} className={`flex-row items-center gap-2.5 py-2 ${isLast ? "" : "border-b border-line"}`}>
+              <View
+                key={line.productId}
+                className={`flex-row items-center gap-2.5 py-2 ${isLast ? "" : "border-b border-line"}`}
+              >
                 {/* Thumb */}
                 <View className="h-12 w-12 items-center justify-center overflow-hidden rounded-xl bg-canvas">
                   {imageSource({ name: line.name, image_uri: null }) ? (
-                    <Image source={imageSource({ name: line.name, image_uri: null })!} resizeMode="contain" className="h-11 w-11" accessibilityLabel={`${line.name} image`} />
-                  ) : <Package size={18} color={colors.deepPurple} />}
+                    <Image
+                      source={
+                        imageSource({ name: line.name, image_uri: null })!
+                      }
+                      resizeMode="contain"
+                      className="h-11 w-11"
+                      accessibilityLabel={`${line.name} image`}
+                    />
+                  ) : (
+                    <Package size={18} color={colors.deepPurple} />
+                  )}
                 </View>
                 {/* Info */}
                 <View className="min-w-0 flex-1 gap-0.5">
-                  <AppText variant="label" numberOfLines={1} style={{ fontSize: 13 }}>{line.name}</AppText>
-                  <AppText variant="small" color={colors.secondary} style={{ fontSize: 11 }}>{formatMoney(line.priceCents)} each</AppText>
+                  <AppText
+                    variant="label"
+                    numberOfLines={1}
+                    style={{ fontSize: 13 }}
+                  >
+                    {line.name}
+                  </AppText>
+                  <AppText
+                    variant="small"
+                    color={colors.secondary}
+                    style={{ fontSize: 11 }}
+                  >
+                    {formatMoney(line.priceCents)} each
+                  </AppText>
                 </View>
                 {/* Qty stepper */}
                 <View className="flex-row items-center gap-1.5">
                   <Pressable
                     accessibilityRole="button"
                     accessibilityLabel={`Remove one ${line.name}`}
-                    onPress={() => useCart.getState().changeQuantity(line.productId, -1)}
+                    onPress={() =>
+                      useCart.getState().changeQuantity(line.productId, -1)
+                    }
                     className="h-7 w-7 items-center justify-center rounded-lg bg-brand-tint active:opacity-75"
                   >
                     <Minus size={13} color={colors.deepPurple} />
                   </Pressable>
-                  <AppText variant="label" style={{ minWidth: 20, textAlign: "center", fontSize: 14 }}>{line.quantity}</AppText>
+                  <AppText
+                    variant="label"
+                    style={{ minWidth: 20, textAlign: "center", fontSize: 14 }}
+                  >
+                    {line.quantity}
+                  </AppText>
                   <Pressable
                     accessibilityRole="button"
                     accessibilityLabel={`Add one ${line.name}`}
-                    onPress={() => useCart.getState().changeQuantity(line.productId, 1)}
+                    onPress={() =>
+                      useCart.getState().changeQuantity(line.productId, 1)
+                    }
                     className="h-7 w-7 items-center justify-center rounded-lg bg-brand-tint active:opacity-75"
                   >
                     <Plus size={13} color={colors.deepPurple} />
                   </Pressable>
                 </View>
                 {/* Line total */}
-                <AppText variant="label" style={{ minWidth: 48, textAlign: "right", fontSize: 13 }}>
+                <AppText
+                  variant="label"
+                  style={{ minWidth: 48, textAlign: "right", fontSize: 13 }}
+                >
                   {formatMoney(line.priceCents * line.quantity)}
                 </AppText>
               </View>
             );
           })}
-          {!lines.length ? <AppText color={colors.secondary}>Your basket is empty.</AppText> : null}
+          {!lines.length ? (
+            <AppText color={colors.secondary}>Your basket is empty.</AppText>
+          ) : null}
         </View>
 
         {/* Customer card (credit mode or customer with balance) */}
-        {creditMode || (customerId && (balance > 0 || changeDisp === "OWED")) ? (
+        {creditMode ||
+        (customerId && (balance > 0 || changeDisp === "OWED")) ? (
           <View className="gap-3 rounded-2xl border border-line bg-surface px-4 py-3">
-            <AppText variant="heading" style={{ fontSize: 15 }}>Customer account</AppText>
+            <AppText variant="heading" style={{ fontSize: 15 }}>
+              Customer account
+            </AppText>
             {customer ? (
               <View className="flex-row items-center gap-3 rounded-xl bg-brand-tint px-3 py-2.5">
                 <View className="h-10 w-10 items-center justify-center rounded-full bg-gold">
-                  <AppText variant="label" color={colors.deepPurple}>{customer.name[0]?.toUpperCase()}</AppText>
+                  <AppText variant="label" color={colors.deepPurple}>
+                    {customer.name[0]?.toUpperCase()}
+                  </AppText>
                 </View>
                 <View className="min-w-0 flex-1">
-                  <AppText variant="label" style={{ fontSize: 13 }}>{customer.name}</AppText>
-                  <AppText variant="small" color={colors.secondary} style={{ fontSize: 11 }}>{customer.phone || "No phone number"}</AppText>
+                  <AppText variant="label" style={{ fontSize: 13 }}>
+                    {customer.name}
+                  </AppText>
+                  <AppText
+                    variant="small"
+                    color={colors.secondary}
+                    style={{ fontSize: 11 }}
+                  >
+                    {customer.phone || "No phone number"}
+                  </AppText>
                 </View>
                 <StatusBadge label="Credit sale" tone="amber" />
               </View>
             ) : (
-              <AppText color={colors.danger} style={{ fontSize: 13 }}>No customer selected. Choose a customer from the credit tab.</AppText>
+              <AppText color={colors.danger} style={{ fontSize: 13 }}>
+                No customer selected. Choose a customer from the credit tab.
+              </AppText>
             )}
           </View>
         ) : null}
 
         {/* Payment method */}
         <View className="gap-3 rounded-2xl border border-line bg-surface px-4 py-3">
-          <AppText variant="heading" style={{ fontSize: 15 }}>Payment method</AppText>
+          <AppText variant="heading" style={{ fontSize: 15 }}>
+            Payment method
+          </AppText>
           <View className="flex-row gap-2">
             {paymentMethods.map((m) => {
               const selected = method === m.key;
@@ -574,7 +1119,13 @@ export function CheckoutScreen() {
                   className={`min-h-[52px] flex-1 flex-row items-center justify-center gap-1.5 rounded-xl border px-2 active:opacity-80 ${selected ? "border-brand bg-brand-tint" : "border-line bg-surface"}`}
                 >
                   {m.icon}
-                  <AppText variant="small" color={selected ? colors.deepPurple : colors.secondary} style={{ fontSize: 12 }}>{m.label}</AppText>
+                  <AppText
+                    variant="small"
+                    color={selected ? colors.deepPurple : colors.secondary}
+                    style={{ fontSize: 12 }}
+                  >
+                    {m.label}
+                  </AppText>
                 </Pressable>
               );
             })}
@@ -583,7 +1134,9 @@ export function CheckoutScreen() {
           {/* Amount received */}
           {creditMode || method === "CASH" ? (
             <Field
-              label={method === "CASH" ? "Cash received" : "Amount received now"}
+              label={
+                method === "CASH" ? "Cash received" : "Amount received now"
+              }
               keyboardType="decimal-pad"
               value={paidAmount ?? suggested}
               onChangeText={setPaidAmount}
@@ -593,20 +1146,42 @@ export function CheckoutScreen() {
 
           {/* Total row */}
           <View className="flex-row items-center justify-between border-t border-line pt-3">
-            <AppText variant="label" style={{ fontSize: 14 }}>Total</AppText>
-            <AppText variant="amount" style={{ fontSize: 22 }}>{formatMoney(total)}</AppText>
+            <AppText variant="label" style={{ fontSize: 14 }}>
+              Total
+            </AppText>
+            <AppText variant="amount" style={{ fontSize: 22 }}>
+              {formatMoney(total)}
+            </AppText>
           </View>
 
           {/* Balance due */}
           {balance > 0 ? (
             <View className="flex-row items-center gap-3 rounded-xl border border-warning/30 bg-warning/10 px-3 py-2.5">
               <View className="min-w-0 flex-1">
-                <AppText variant="label" color={colors.warning} style={{ fontSize: 13 }}>Remaining balance</AppText>
+                <AppText
+                  variant="label"
+                  color={colors.warning}
+                  style={{ fontSize: 13 }}
+                >
+                  Remaining balance
+                </AppText>
                 {!customerId ? (
-                  <AppText variant="small" color={colors.secondary} style={{ fontSize: 11, marginTop: 2 }}>Link a customer to record this as pay later.</AppText>
+                  <AppText
+                    variant="small"
+                    color={colors.secondary}
+                    style={{ fontSize: 11, marginTop: 2 }}
+                  >
+                    Link a customer to record this as pay later.
+                  </AppText>
                 ) : null}
               </View>
-              <AppText variant="amount" color={colors.warning} style={{ fontSize: 18 }}>{formatMoney(balance)}</AppText>
+              <AppText
+                variant="amount"
+                color={colors.warning}
+                style={{ fontSize: 18 }}
+              >
+                {formatMoney(balance)}
+              </AppText>
             </View>
           ) : null}
 
@@ -614,8 +1189,20 @@ export function CheckoutScreen() {
           {change > 0 ? (
             <View className="gap-2.5 rounded-xl border border-success/20 bg-success/10 px-3 py-2.5">
               <View className="flex-row items-center justify-between">
-                <AppText variant="label" color={colors.success} style={{ fontSize: 13 }}>Change due</AppText>
-                <AppText variant="amount" color={colors.success} style={{ fontSize: 18 }}>{formatMoney(change)}</AppText>
+                <AppText
+                  variant="label"
+                  color={colors.success}
+                  style={{ fontSize: 13 }}
+                >
+                  Change due
+                </AppText>
+                <AppText
+                  variant="amount"
+                  color={colors.success}
+                  style={{ fontSize: 18 }}
+                >
+                  {formatMoney(change)}
+                </AppText>
               </View>
               <View className="flex-row gap-2">
                 <Pressable
@@ -624,8 +1211,21 @@ export function CheckoutScreen() {
                   onPress={() => setChangeDisp("GIVEN")}
                   className={`flex-1 flex-row items-center justify-center gap-1.5 rounded-lg border py-2 active:opacity-75 ${changeDisp === "GIVEN" ? "border-success bg-surface" : "border-line bg-surface"}`}
                 >
-                  <Check size={14} color={changeDisp === "GIVEN" ? colors.success : colors.secondary} />
-                  <AppText variant="small" color={changeDisp === "GIVEN" ? colors.success : colors.secondary} style={{ fontSize: 12 }}>Give now</AppText>
+                  <Check
+                    size={14}
+                    color={
+                      changeDisp === "GIVEN" ? colors.success : colors.secondary
+                    }
+                  />
+                  <AppText
+                    variant="small"
+                    color={
+                      changeDisp === "GIVEN" ? colors.success : colors.secondary
+                    }
+                    style={{ fontSize: 12 }}
+                  >
+                    Give now
+                  </AppText>
                 </Pressable>
                 <Pressable
                   accessibilityRole="radio"
@@ -633,22 +1233,49 @@ export function CheckoutScreen() {
                   onPress={() => setChangeDisp("OWED")}
                   className={`flex-1 flex-row items-center justify-center gap-1.5 rounded-lg border py-2 active:opacity-75 ${changeDisp === "OWED" ? "border-warning bg-warning/10" : "border-line bg-surface"}`}
                 >
-                  <AppText variant="small" color={changeDisp === "OWED" ? colors.warning : colors.secondary} style={{ fontSize: 12 }}>Collect later</AppText>
+                  <AppText
+                    variant="small"
+                    color={
+                      changeDisp === "OWED" ? colors.warning : colors.secondary
+                    }
+                    style={{ fontSize: 12 }}
+                  >
+                    Collect later
+                  </AppText>
                 </Pressable>
               </View>
               {changeDisp === "OWED" ? (
                 customerId ? (
                   <View className="gap-1 rounded-lg bg-surface px-3 py-2">
-                    <AppText variant="small" color={colors.secondary} style={{ fontSize: 11 }}>Customer collecting change</AppText>
-                    <AppText variant="label" style={{ fontSize: 13 }}>{customer?.name ?? "Loading…"}</AppText>
+                    <AppText
+                      variant="small"
+                      color={colors.secondary}
+                      style={{ fontSize: 11 }}
+                    >
+                      Customer collecting change
+                    </AppText>
+                    <AppText variant="label" style={{ fontSize: 13 }}>
+                      {customer?.name ?? "Loading…"}
+                    </AppText>
                   </View>
                 ) : (
                   <Pressable
                     accessibilityRole="button"
                     className="flex-row items-center justify-between rounded-lg border border-brand/30 bg-brand-tint px-3 py-2.5 active:opacity-80"
-                    onPress={() => router.push({ pathname: "/credit/new-credit-sale", params: { preserveCart: "true", purpose: "change" } })}
+                    onPress={() =>
+                      router.push({
+                        pathname: "/credit/new-credit-sale",
+                        params: { preserveCart: "true", purpose: "change" },
+                      })
+                    }
                   >
-                    <AppText variant="label" color={colors.deepPurple} style={{ fontSize: 13 }}>Choose who will collect it</AppText>
+                    <AppText
+                      variant="label"
+                      color={colors.deepPurple}
+                      style={{ fontSize: 13 }}
+                    >
+                      Choose who will collect it
+                    </AppText>
                     <ChevronRight size={17} color={colors.deepPurple} />
                   </Pressable>
                 )
@@ -661,9 +1288,20 @@ export function CheckoutScreen() {
             <Pressable
               accessibilityRole="button"
               className="flex-row items-center justify-between rounded-xl border border-brand/30 bg-brand-tint px-4 py-3 active:opacity-80"
-              onPress={() => router.push({ pathname: "/credit/new-credit-sale", params: { preserveCart: "true" } })}
+              onPress={() =>
+                router.push({
+                  pathname: "/credit/new-credit-sale",
+                  params: { preserveCart: "true" },
+                })
+              }
             >
-              <AppText variant="label" color={colors.deepPurple} style={{ fontSize: 13 }}>Choose customer · record balance later</AppText>
+              <AppText
+                variant="label"
+                color={colors.deepPurple}
+                style={{ fontSize: 13 }}
+              >
+                Choose customer · record balance later
+              </AppText>
               <ChevronRight size={17} color={colors.deepPurple} />
             </Pressable>
           ) : null}
@@ -672,9 +1310,16 @@ export function CheckoutScreen() {
         {/* Lookup error */}
         {lookupError ? (
           <View className="gap-2 rounded-2xl bg-danger/10 p-3">
-            <AppText variant="small" color={colors.danger}>{lookupError}</AppText>
-            <Pressable accessibilityRole="button" onPress={() => setLookupRetry((v) => v + 1)}>
-              <AppText variant="label" color={colors.deepPurple}>Retry</AppText>
+            <AppText variant="small" color={colors.danger}>
+              {lookupError}
+            </AppText>
+            <Pressable
+              accessibilityRole="button"
+              onPress={() => setLookupRetry((v) => v + 1)}
+            >
+              <AppText variant="label" color={colors.deepPurple}>
+                Retry
+              </AppText>
             </Pressable>
           </View>
         ) : null}
@@ -682,7 +1327,9 @@ export function CheckoutScreen() {
         {/* General error */}
         {error ? (
           <View className="rounded-2xl bg-danger/10 p-3">
-            <AppText variant="small" color={colors.danger}>{error}</AppText>
+            <AppText variant="small" color={colors.danger}>
+              {error}
+            </AppText>
           </View>
         ) : null}
       </ScrollView>
@@ -693,7 +1340,11 @@ export function CheckoutScreen() {
         style={{ paddingBottom: Math.max(insets.bottom, 10) }}
       >
         {!canComplete ? (
-          <AppText variant="small" color={colors.secondary} style={{ textAlign: "center", marginBottom: 8, fontSize: 12 }}>
+          <AppText
+            variant="small"
+            color={colors.secondary}
+            style={{ textAlign: "center", marginBottom: 8, fontSize: 12 }}
+          >
             {!lines.length
               ? "Add an item to complete this sale."
               : changeDisp === "OWED" && change > 0 && !customerId
@@ -703,14 +1354,35 @@ export function CheckoutScreen() {
         ) : null}
         <Pressable
           accessibilityRole="button"
-          accessibilityLabel={change > 0 ? changeDisp === "OWED" ? `Record sale and ${formatMoney(change)} change owed` : `Complete sale and give ${formatMoney(change)} change` : "Complete sale"}
+          accessibilityLabel={
+            change > 0
+              ? changeDisp === "OWED"
+                ? `Record sale and ${formatMoney(change)} change owed`
+                : `Complete sale and give ${formatMoney(change)} change`
+              : "Complete sale"
+          }
           disabled={busy || !canComplete}
           onPress={completeSale}
           className={`min-h-[54px] flex-row items-center justify-center gap-2.5 rounded-2xl ${canComplete ? "bg-brand active:opacity-85" : "bg-brand/50"}`}
         >
-          {busy ? <ActivityIndicator size="small" color="#fff" /> : <Check size={19} color="#fff" />}
-          <AppText variant="label" color="#fff" numberOfLines={1} style={{ fontSize: 15 }}>
-            {busy ? "Saving sale…" : change > 0 ? changeDisp === "OWED" ? `Record change owed · ${formatMoney(change)}` : `Complete sale · give ${formatMoney(change)}` : "Complete sale"}
+          {busy ? (
+            <ActivityIndicator size="small" color="#fff" />
+          ) : (
+            <Check size={19} color="#fff" />
+          )}
+          <AppText
+            variant="label"
+            color="#fff"
+            numberOfLines={1}
+            style={{ fontSize: 15 }}
+          >
+            {busy
+              ? "Saving sale…"
+              : change > 0
+                ? changeDisp === "OWED"
+                  ? `Record change owed · ${formatMoney(change)}`
+                  : `Complete sale · give ${formatMoney(change)}`
+                : "Complete sale"}
           </AppText>
         </Pressable>
       </View>
@@ -728,41 +1400,62 @@ export function SalesHistoryScreen() {
   const { revision } = useSyncStatus();
   const ownerId = businessId ?? session?.user.id ?? "";
 
-  const [sales, setSales]             = useState<SaleSummary[]>([]);
-  const [refreshing, setRefreshing]   = useState(false);
-  const [loading, setLoading]         = useState(true);
-  const [loadError, setLoadError]     = useState("");
-  const [search, setSearch]           = useState("");
-  const [dateFilter, setDateFilter]   = useState<HistoryDateFilter>("30_DAYS");
+  const [sales, setSales] = useState<SaleSummary[]>([]);
+  const [refreshing, setRefreshing] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState("");
+  const [search, setSearch] = useState("");
+  const [dateFilter, setDateFilter] = useState<HistoryDateFilter>("30_DAYS");
   const [customRange, setCustomRange] = useState<DateRange | null>(null);
   const [calendarOpen, setCalendarOpen] = useState(false);
   const [calendarMonth, setCalendarMonth] = useState(() => {
     const today = new Date();
     return new Date(today.getFullYear(), today.getMonth(), 1);
   });
-  const [draftStart, setDraftStart]   = useState<Date | null>(null);
-  const [draftEnd, setDraftEnd]       = useState<Date | null>(null);
-  const [expandedId, setExpandedId]   = useState<string | null>(null);
+  const [draftStart, setDraftStart] = useState<Date | null>(null);
+  const [draftEnd, setDraftEnd] = useState<Date | null>(null);
+  const [expandedId, setExpandedId] = useState<string | null>(null);
 
-  const dateBounds = useMemo(() => getHistoryDateBounds(dateFilter, customRange), [dateFilter, customRange]);
-  const calendarDays = useMemo(() => getCalendarDays(calendarMonth), [calendarMonth]);
+  const dateBounds = useMemo(
+    () => getHistoryDateBounds(dateFilter, customRange),
+    [dateFilter, customRange],
+  );
+  const calendarDays = useMemo(
+    () => getCalendarDays(calendarMonth),
+    [calendarMonth],
+  );
   const datePresets = [
     { key: "TODAY", label: "Today" },
     { key: "7_DAYS", label: "7 days" },
     { key: "30_DAYS", label: "30 days" },
   ] as const;
 
-  const visible = useMemo(() => sales.filter((s) => {
-    const matchSearch = `${s.receipt_number} ${s.customer_name ?? ""}`.toLowerCase().includes(search.trim().toLowerCase());
-    return matchSearch;
-  }), [sales, search]);
-  const totals = useMemo(() => sales.reduce((sum, sale) => ({
-    salesCents: sum.salesCents + sale.total_cents,
-    receivedCents: sum.receivedCents + sale.paid_cents,
-    creditCents: sum.creditCents + sale.balance_cents,
-  }), { salesCents: 0, receivedCents: 0, creditCents: 0 }), [sales]);
+  const visible = useMemo(
+    () =>
+      sales.filter((s) => {
+        const matchSearch = `${s.receipt_number} ${s.customer_name ?? ""}`
+          .toLowerCase()
+          .includes(search.trim().toLowerCase());
+        return matchSearch;
+      }),
+    [sales, search],
+  );
+  const totals = useMemo(
+    () =>
+      sales.reduce(
+        (sum, sale) => ({
+          salesCents: sum.salesCents + sale.total_cents,
+          receivedCents: sum.receivedCents + sale.paid_cents,
+          creditCents: sum.creditCents + sale.balance_cents,
+        }),
+        { salesCents: 0, receivedCents: 0, creditCents: 0 },
+      ),
+    [sales],
+  );
 
-  const selectDatePreset = (nextFilter: Exclude<HistoryDateFilter, "CUSTOM">) => {
+  const selectDatePreset = (
+    nextFilter: Exclude<HistoryDateFilter, "CUSTOM">,
+  ) => {
     if (dateFilter === nextFilter && customRange === null) {
       setCalendarOpen(false);
       return;
@@ -775,7 +1468,9 @@ export function SalesHistoryScreen() {
   };
   const openCalendar = () => {
     const reference = customRange?.start ?? new Date();
-    setCalendarMonth(new Date(reference.getFullYear(), reference.getMonth(), 1));
+    setCalendarMonth(
+      new Date(reference.getFullYear(), reference.getMonth(), 1),
+    );
     setDraftStart(customRange?.start ?? null);
     setDraftEnd(customRange?.end ?? null);
     setCalendarOpen((open) => !open);
@@ -804,19 +1499,49 @@ export function SalesHistoryScreen() {
   const refresh = async () => {
     setRefreshing(true);
     setLoadError("");
-    try { setSales(await listSalesBetween(db, ownerId, dateBounds.start.toISOString(), dateBounds.endExclusive.toISOString())); }
-    catch (e) { setLoadError(e instanceof Error ? e.message : "Sales history could not be loaded."); }
-    finally { setRefreshing(false); }
+    try {
+      setSales(
+        await listSalesBetween(
+          db,
+          ownerId,
+          dateBounds.start.toISOString(),
+          dateBounds.endExclusive.toISOString(),
+        ),
+      );
+    } catch (e) {
+      setLoadError(
+        e instanceof Error ? e.message : "Sales history could not be loaded.",
+      );
+    } finally {
+      setRefreshing(false);
+    }
   };
 
   useEffect(() => {
     let active = true;
-    void listSalesBetween(db, ownerId, dateBounds.start.toISOString(), dateBounds.endExclusive.toISOString()).then((data) => {
-      if (active) setSales(data);
-    }).catch((e: unknown) => {
-      if (active) setLoadError(e instanceof Error ? e.message : "Sales history could not be loaded.");
-    }).finally(() => { if (active) setLoading(false); });
-    return () => { active = false; };
+    void listSalesBetween(
+      db,
+      ownerId,
+      dateBounds.start.toISOString(),
+      dateBounds.endExclusive.toISOString(),
+    )
+      .then((data) => {
+        if (active) setSales(data);
+      })
+      .catch((e: unknown) => {
+        if (active)
+          setLoadError(
+            e instanceof Error
+              ? e.message
+              : "Sales history could not be loaded.",
+          );
+      })
+      .finally(() => {
+        if (active) setLoading(false);
+      });
+    return () => {
+      active = false;
+    };
   }, [db, ownerId, revision, dateBounds.start, dateBounds.endExclusive]);
 
   return (
@@ -840,7 +1565,13 @@ export function SalesHistoryScreen() {
       <ScrollView
         style={st.historyScroller}
         contentContainerStyle={st.historyContent}
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={refresh} tintColor={colors.purple} />}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={refresh}
+            tintColor={colors.purple}
+          />
+        }
         keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}
       >
@@ -856,7 +1587,11 @@ export function SalesHistoryScreen() {
 
         {/* Date range */}
         <View className="gap-2">
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={st.filterRow}>
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={st.filterRow}
+          >
             {datePresets.map((preset) => {
               const active = dateFilter === preset.key;
               return (
@@ -867,20 +1602,43 @@ export function SalesHistoryScreen() {
                   onPress={() => selectDatePreset(preset.key)}
                   className={`min-h-9 items-center justify-center rounded-full border px-3 active:opacity-80 ${active ? "border-brand bg-brand" : "border-line bg-surface"}`}
                 >
-                  <AppText variant="small" color={active ? colors.surface : colors.secondary} style={{ fontSize: 12 }}>{preset.label}</AppText>
+                  <AppText
+                    variant="small"
+                    color={active ? colors.surface : colors.secondary}
+                    style={{ fontSize: 12 }}
+                  >
+                    {preset.label}
+                  </AppText>
                 </Pressable>
               );
             })}
             <Pressable
               accessibilityRole="button"
-              accessibilityLabel={customRange ? `Calendar range ${shortCalendarDate(customRange.start)} to ${shortCalendarDate(customRange.end)}` : "Choose dates from calendar"}
+              accessibilityLabel={
+                customRange
+                  ? `Calendar range ${shortCalendarDate(customRange.start)} to ${shortCalendarDate(customRange.end)}`
+                  : "Choose dates from calendar"
+              }
               accessibilityState={{ selected: dateFilter === "CUSTOM" }}
               onPress={openCalendar}
               className={`min-h-9 flex-row items-center justify-center gap-1.5 rounded-full border px-3 active:opacity-80 ${dateFilter === "CUSTOM" ? "border-brand bg-brand" : "border-line bg-surface"}`}
             >
-              <CalendarDays size={15} color={dateFilter === "CUSTOM" ? colors.surface : colors.deepPurple} />
-              <AppText variant="small" color={dateFilter === "CUSTOM" ? colors.surface : colors.deepPurple} style={{ fontSize: 12 }}>
-                {customRange ? `${shortCalendarDate(customRange.start)} – ${shortCalendarDate(customRange.end)}` : "Calendar"}
+              <CalendarDays
+                size={15}
+                color={
+                  dateFilter === "CUSTOM" ? colors.surface : colors.deepPurple
+                }
+              />
+              <AppText
+                variant="small"
+                color={
+                  dateFilter === "CUSTOM" ? colors.surface : colors.deepPurple
+                }
+                style={{ fontSize: 12 }}
+              >
+                {customRange
+                  ? `${shortCalendarDate(customRange.start)} – ${shortCalendarDate(customRange.end)}`
+                  : "Calendar"}
               </AppText>
             </Pressable>
           </ScrollView>
@@ -889,38 +1647,88 @@ export function SalesHistoryScreen() {
             <View className="gap-3 rounded-2xl border border-line bg-surface p-3">
               <View className="flex-row items-center justify-between">
                 <View className="gap-0.5">
-                  <AppText variant="label" color={colors.deepPurple}>Choose date range</AppText>
+                  <AppText variant="label" color={colors.deepPurple}>
+                    Choose date range
+                  </AppText>
                   <AppText variant="small" color={colors.secondary}>
                     {draftStart && draftEnd
                       ? `${shortCalendarDate(draftStart)} – ${shortCalendarDate(draftEnd)}`
-                      : draftStart ? "Now choose the end date" : "Select a start date, then an end date"}
+                      : draftStart
+                        ? "Now choose the end date"
+                        : "Select a start date, then an end date"}
                   </AppText>
                 </View>
                 <View className="flex-row items-center gap-1">
-                  <Pressable accessibilityRole="button" accessibilityLabel="Previous month" onPress={() => setCalendarMonth((month) => new Date(month.getFullYear(), month.getMonth() - 1, 1))} className="h-9 w-9 items-center justify-center rounded-full bg-brand-tint active:opacity-80">
+                  <Pressable
+                    accessibilityRole="button"
+                    accessibilityLabel="Previous month"
+                    onPress={() =>
+                      setCalendarMonth(
+                        (month) =>
+                          new Date(
+                            month.getFullYear(),
+                            month.getMonth() - 1,
+                            1,
+                          ),
+                      )
+                    }
+                    className="h-9 w-9 items-center justify-center rounded-full bg-brand-tint active:opacity-80"
+                  >
                     <ChevronLeft size={18} color={colors.deepPurple} />
                   </Pressable>
-                  <Pressable accessibilityRole="button" accessibilityLabel="Next month" onPress={() => setCalendarMonth((month) => new Date(month.getFullYear(), month.getMonth() + 1, 1))} className="h-9 w-9 items-center justify-center rounded-full bg-brand-tint active:opacity-80">
+                  <Pressable
+                    accessibilityRole="button"
+                    accessibilityLabel="Next month"
+                    onPress={() =>
+                      setCalendarMonth(
+                        (month) =>
+                          new Date(
+                            month.getFullYear(),
+                            month.getMonth() + 1,
+                            1,
+                          ),
+                      )
+                    }
+                    className="h-9 w-9 items-center justify-center rounded-full bg-brand-tint active:opacity-80"
+                  >
                     <ChevronRight size={18} color={colors.deepPurple} />
                   </Pressable>
                 </View>
               </View>
-              <AppText variant="label" color={colors.text} style={{ textAlign: "center" }}>
-                {calendarMonth.toLocaleDateString(undefined, { month: "long", year: "numeric" })}
+              <AppText
+                variant="label"
+                color={colors.text}
+                style={{ textAlign: "center" }}
+              >
+                {calendarMonth.toLocaleDateString(undefined, {
+                  month: "long",
+                  year: "numeric",
+                })}
               </AppText>
               <View className="flex-row">
                 {["S", "M", "T", "W", "T", "F", "S"].map((day, index) => (
-                  <View key={`${day}-${index}`} className="w-[14.28%] items-center py-1">
-                    <AppText variant="small" color={colors.secondary}>{day}</AppText>
+                  <View
+                    key={`${day}-${index}`}
+                    className="w-[14.28%] items-center py-1"
+                  >
+                    <AppText variant="small" color={colors.secondary}>
+                      {day}
+                    </AppText>
                   </View>
                 ))}
               </View>
               <View className="flex-row flex-wrap">
                 {calendarDays.map((day) => {
-                  const outsideMonth = day.getMonth() !== calendarMonth.getMonth();
+                  const outsideMonth =
+                    day.getMonth() !== calendarMonth.getMonth();
                   const isStart = sameLocalDay(draftStart, day);
                   const isEnd = sameLocalDay(draftEnd, day);
-                  const inRange = Boolean(draftStart && draftEnd && day.getTime() > draftStart.getTime() && day.getTime() < draftEnd.getTime());
+                  const inRange = Boolean(
+                    draftStart &&
+                    draftEnd &&
+                    day.getTime() > draftStart.getTime() &&
+                    day.getTime() < draftEnd.getTime(),
+                  );
                   const isToday = sameLocalDay(new Date(), day);
                   const selected = isStart || isEnd;
                   return (
@@ -933,17 +1741,40 @@ export function SalesHistoryScreen() {
                       onPress={() => selectCalendarDay(day)}
                       className={`h-10 w-[14.28%] items-center justify-center rounded-full ${selected ? "bg-brand" : inRange ? "bg-brand-tint" : "bg-surface"} ${isToday && !selected ? "border border-brand" : ""} ${outsideMonth ? "opacity-0" : ""}`}
                     >
-                      <AppText variant="small" color={selected ? colors.surface : colors.text}>{day.getDate()}</AppText>
+                      <AppText
+                        variant="small"
+                        color={selected ? colors.surface : colors.text}
+                      >
+                        {day.getDate()}
+                      </AppText>
                     </Pressable>
                   );
                 })}
               </View>
               <View className="flex-row justify-end gap-2 border-t border-line pt-3">
-                <Pressable accessibilityRole="button" onPress={() => setCalendarOpen(false)} className="min-h-10 items-center justify-center rounded-xl px-4 active:opacity-80">
-                  <AppText variant="label" color={colors.secondary}>Cancel</AppText>
+                <Pressable
+                  accessibilityRole="button"
+                  onPress={() => setCalendarOpen(false)}
+                  className="min-h-10 items-center justify-center rounded-xl px-4 active:opacity-80"
+                >
+                  <AppText variant="label" color={colors.secondary}>
+                    Cancel
+                  </AppText>
                 </Pressable>
-                <Pressable accessibilityRole="button" disabled={!draftStart || !draftEnd} onPress={applyCalendarRange} className={`min-h-10 items-center justify-center rounded-xl px-4 ${draftStart && draftEnd ? "bg-brand" : "bg-line"}`}>
-                  <AppText variant="label" color={draftStart && draftEnd ? colors.surface : colors.secondary}>Apply</AppText>
+                <Pressable
+                  accessibilityRole="button"
+                  disabled={!draftStart || !draftEnd}
+                  onPress={applyCalendarRange}
+                  className={`min-h-10 items-center justify-center rounded-xl px-4 ${draftStart && draftEnd ? "bg-brand" : "bg-line"}`}
+                >
+                  <AppText
+                    variant="label"
+                    color={
+                      draftStart && draftEnd ? colors.surface : colors.secondary
+                    }
+                  >
+                    Apply
+                  </AppText>
                 </Pressable>
               </View>
             </View>
@@ -953,18 +1784,48 @@ export function SalesHistoryScreen() {
         {/* Totals for the selected date range */}
         <View className="flex-row gap-2">
           {[
-            { label: "Total Sales", amount: totals.salesCents, icon: ShoppingCart, tone: colors.deepPurple },
-            { label: "Cash Received", amount: totals.receivedCents, icon: Banknote, tone: colors.success },
-            { label: "Credit", amount: totals.creditCents, icon: CreditCard, tone: colors.danger },
+            {
+              label: "Total Sales",
+              amount: totals.salesCents,
+              icon: ShoppingCart,
+              tone: colors.deepPurple,
+            },
+            {
+              label: "Cash Received",
+              amount: totals.receivedCents,
+              icon: Banknote,
+              tone: colors.success,
+            },
+            {
+              label: "Credit",
+              amount: totals.creditCents,
+              icon: CreditCard,
+              tone: colors.danger,
+            },
           ].map((metric) => {
             const Icon = metric.icon;
             return (
-              <View key={metric.label} className="min-w-0 flex-1 gap-2 rounded-xl border border-line bg-surface p-2.5">
+              <View
+                key={metric.label}
+                className="min-w-0 flex-1 gap-2 rounded-xl border border-line bg-surface p-2.5"
+              >
                 <View className="flex-row items-center justify-between gap-1">
-                  <AppText variant="small" color={colors.secondary} numberOfLines={1} style={{ fontSize: 10 }}>{metric.label}</AppText>
+                  <AppText
+                    variant="small"
+                    color={colors.secondary}
+                    numberOfLines={1}
+                    style={{ fontSize: 10 }}
+                  >
+                    {metric.label}
+                  </AppText>
                   <Icon size={15} color={metric.tone} />
                 </View>
-                <AppText variant="label" color={metric.tone} numberOfLines={1} style={{ fontSize: 13 }}>
+                <AppText
+                  variant="label"
+                  color={metric.tone}
+                  numberOfLines={1}
+                  style={{ fontSize: 13 }}
+                >
                   {formatMoney(metric.amount)}
                 </AppText>
               </View>
@@ -974,17 +1835,41 @@ export function SalesHistoryScreen() {
 
         {/* Header row */}
         <View className="flex-row items-center justify-between">
-          <AppText variant="heading" style={{ fontSize: 15 }}>Sales</AppText>
-          <AppText variant="small" color={colors.secondary} style={{ fontSize: 12 }}>
+          <AppText variant="heading" style={{ fontSize: 15 }}>
+            Sales
+          </AppText>
+          <AppText
+            variant="small"
+            color={colors.secondary}
+            style={{ fontSize: 12 }}
+          >
             {visible.length} {visible.length === 1 ? "sale" : "sales"}
           </AppText>
         </View>
 
         {/* Compact sale list headings */}
         <View className="flex-row items-center border-b border-line px-2 pb-2">
-          <AppText variant="small" color={colors.secondary} style={{ width: "31%", fontSize: 10 }}>Time</AppText>
-          <AppText variant="small" color={colors.secondary} style={{ width: "37%", fontSize: 10 }}>Items</AppText>
-          <AppText variant="small" color={colors.secondary} style={{ flex: 1, textAlign: "right", fontSize: 10 }}>Total</AppText>
+          <AppText
+            variant="small"
+            color={colors.secondary}
+            style={{ width: "31%", fontSize: 10 }}
+          >
+            Time
+          </AppText>
+          <AppText
+            variant="small"
+            color={colors.secondary}
+            style={{ width: "37%", fontSize: 10 }}
+          >
+            Items
+          </AppText>
+          <AppText
+            variant="small"
+            color={colors.secondary}
+            style={{ flex: 1, textAlign: "right", fontSize: 10 }}
+          >
+            Total
+          </AppText>
           <View className="w-5" />
         </View>
 
@@ -992,62 +1877,122 @@ export function SalesHistoryScreen() {
         {loading ? (
           <View className="min-h-[120px] flex-row items-center justify-center gap-3">
             <ActivityIndicator color={colors.purple} />
-            <AppText variant="small" color={colors.secondary}>Loading sales…</AppText>
+            <AppText variant="small" color={colors.secondary}>
+              Loading sales…
+            </AppText>
           </View>
         ) : null}
 
         {/* Error */}
         {loadError ? (
           <View className="rounded-2xl bg-danger/10 p-3">
-            <AppText variant="small" color={colors.danger}>{loadError}</AppText>
+            <AppText variant="small" color={colors.danger}>
+              {loadError}
+            </AppText>
           </View>
         ) : null}
 
         {/* Sale rows */}
-        {!loading && !loadError && visible.map((sale) => {
-          const expanded = expandedId === sale.id;
-          const paymentLabel = formatPaymentMethod(sale.payment_method, sale.status);
-          const paymentColor = sale.balance_cents > 0 ? colors.danger : colors.success;
-          return (
-            <View key={sale.id} className="overflow-hidden border-b border-line">
-              <Pressable
-                accessibilityRole="button"
-                accessibilityLabel={`${formatSaleTime(sale.created_at)}, ${sale.item_count ?? 0} items, ${formatMoney(sale.total_cents)}, ${paymentLabel}`}
-                accessibilityState={{ expanded }}
-                onPress={() => setExpandedId(expanded ? null : sale.id)}
-                className="min-h-14 flex-row items-center px-2 active:bg-brand-tint"
+        {!loading &&
+          !loadError &&
+          visible.map((sale) => {
+            const expanded = expandedId === sale.id;
+            const paymentLabel = formatPaymentMethod(
+              sale.payment_method,
+              sale.status,
+            );
+            const paymentColor =
+              sale.balance_cents > 0 ? colors.danger : colors.success;
+            return (
+              <View
+                key={sale.id}
+                className="overflow-hidden border-b border-line"
               >
-                <AppText variant="small" color={colors.secondary} style={{ width: "31%", fontSize: 10 }}>{formatSaleTime(sale.created_at)}</AppText>
-                <AppText variant="small" color={colors.text} style={{ width: "37%", fontSize: 11 }}>
-                  {sale.item_count ?? 0} {(sale.item_count ?? 0) === 1 ? "item" : "items"}
-                </AppText>
-                <View className="min-w-0 flex-1 items-end gap-0.5">
-                  <AppText variant="label" color={colors.deepPurple} numberOfLines={1} style={{ fontSize: 12 }}>{formatMoney(sale.total_cents)}</AppText>
-                  <AppText variant="small" color={paymentColor} style={{ fontSize: 9 }}>{paymentLabel}</AppText>
-                </View>
-                <ChevronRight size={16} color={colors.secondary} />
-              </Pressable>
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel={`${formatSaleTime(sale.created_at)}, ${sale.item_count ?? 0} items, ${formatMoney(sale.total_cents)}, ${paymentLabel}`}
+                  accessibilityState={{ expanded }}
+                  onPress={() => setExpandedId(expanded ? null : sale.id)}
+                  className="min-h-14 flex-row items-center px-2 active:bg-brand-tint"
+                >
+                  <AppText
+                    variant="small"
+                    color={colors.secondary}
+                    style={{ width: "31%", fontSize: 10 }}
+                  >
+                    {formatSaleTime(sale.created_at)}
+                  </AppText>
+                  <AppText
+                    variant="small"
+                    color={colors.text}
+                    style={{ width: "37%", fontSize: 11 }}
+                  >
+                    {sale.item_count ?? 0}{" "}
+                    {(sale.item_count ?? 0) === 1 ? "item" : "items"}
+                  </AppText>
+                  <View className="min-w-0 flex-1 items-end gap-0.5">
+                    <AppText
+                      variant="label"
+                      color={colors.deepPurple}
+                      numberOfLines={1}
+                      style={{ fontSize: 12 }}
+                    >
+                      {formatMoney(sale.total_cents)}
+                    </AppText>
+                    <AppText
+                      variant="small"
+                      color={paymentColor}
+                      style={{ fontSize: 9 }}
+                    >
+                      {paymentLabel}
+                    </AppText>
+                  </View>
+                  <ChevronRight size={16} color={colors.secondary} />
+                </Pressable>
 
-              {/* Expanded receipt details */}
-              {expanded ? (
-                <View className="border-t border-line bg-surface px-3 py-3">
-                  <SaleDetailPanel db={db} ownerId={ownerId} sale={sale} />
-                </View>
-              ) : null}
-            </View>
-          );
-        })}
+                {/* Expanded receipt details */}
+                {expanded ? (
+                  <View className="border-t border-line bg-surface px-3 py-3">
+                    <SaleDetailPanel db={db} ownerId={ownerId} sale={sale} />
+                  </View>
+                ) : null}
+              </View>
+            );
+          })}
 
         {/* Empty state */}
         {!loading && !loadError && !visible.length ? (
           <IllustratedEmptyState
             image={require("@/assets/images/shop-illustrations/sales/sales-recorded.png")}
-            title={sales.length ? "No matching sales" : dateFilter !== "30_DAYS" ? "No sales in this date range" : "No sales recorded yet"}
-            description={sales.length ? "Try another customer name or receipt number." : dateFilter !== "30_DAYS" ? "Try a different date range or start a sale." : "Completed sales will appear here."}
+            title={
+              sales.length
+                ? "No matching sales"
+                : dateFilter !== "30_DAYS"
+                  ? "No sales in this date range"
+                  : "No sales recorded yet"
+            }
+            description={
+              sales.length
+                ? "Try another customer name or receipt number."
+                : dateFilter !== "30_DAYS"
+                  ? "Try a different date range or start a sale."
+                  : "Completed sales will appear here."
+            }
             action={
               <PrimaryButton
-                label={sales.length || dateFilter !== "30_DAYS" ? "Clear filters" : "Start a sale"}
-                onPress={sales.length || dateFilter !== "30_DAYS" ? () => { setSearch(""); selectDatePreset("30_DAYS"); } : () => router.push("/(tabs)/sales")}
+                label={
+                  sales.length || dateFilter !== "30_DAYS"
+                    ? "Clear filters"
+                    : "Start a sale"
+                }
+                onPress={
+                  sales.length || dateFilter !== "30_DAYS"
+                    ? () => {
+                        setSearch("");
+                        selectDatePreset("30_DAYS");
+                      }
+                    : () => router.push("/(tabs)/sales")
+                }
               />
             }
           />
@@ -1061,79 +2006,183 @@ export function SalesHistoryScreen() {
 // SaleDetailPanel
 // ─────────────────────────────────────────────────────────────────────────────
 
-function SaleDetailPanel({ db, ownerId, sale }: { db: ReturnType<typeof useSQLiteContext>; ownerId: string; sale: SaleSummary }) {
+function SaleDetailPanel({
+  db,
+  ownerId,
+  sale,
+}: {
+  db: ReturnType<typeof useSQLiteContext>;
+  ownerId: string;
+  sale: SaleSummary;
+}) {
   const [detail, setDetail] = useState<SaleDetail | null>(null);
-  const [error, setError]   = useState("");
+  const [error, setError] = useState("");
 
   useEffect(() => {
     let active = true;
-    void getSaleDetail(db, ownerId, sale.id).then((v) => {
-      if (!active) return;
-      if (v) setDetail(v);
-      else setError("This receipt could not be loaded.");
-    }).catch((e: unknown) => {
-      if (active) setError(e instanceof Error ? e.message : "Receipt could not be loaded.");
-    });
-    return () => { active = false; };
+    void getSaleDetail(db, ownerId, sale.id)
+      .then((v) => {
+        if (!active) return;
+        if (v) setDetail(v);
+        else setError("This receipt could not be loaded.");
+      })
+      .catch((e: unknown) => {
+        if (active)
+          setError(
+            e instanceof Error ? e.message : "Receipt could not be loaded.",
+          );
+      });
+    return () => {
+      active = false;
+    };
   }, [db, ownerId, sale.id]);
 
   const methodLabel = (m: string) =>
-    m === "ECOCASH" ? "EcoCash" : m === "CARD" ? "Card" : m === "OTHER" ? "Other" : "Cash";
+    m === "ECOCASH"
+      ? "EcoCash"
+      : m === "CARD"
+        ? "Card"
+        : m === "OTHER"
+          ? "Other"
+          : "Cash";
 
   return (
     <View className="gap-2.5">
       {/* Meta */}
       <View className="flex-row items-center justify-between">
-        <AppText variant="small" color={colors.secondary} style={{ fontSize: 11 }}>Receipt</AppText>
-        <AppText variant="small" style={{ fontSize: 11 }}>{sale.receipt_number}</AppText>
+        <AppText
+          variant="small"
+          color={colors.secondary}
+          style={{ fontSize: 11 }}
+        >
+          Receipt
+        </AppText>
+        <AppText variant="small" style={{ fontSize: 11 }}>
+          {sale.receipt_number}
+        </AppText>
       </View>
       <View className="flex-row items-center justify-between">
-        <AppText variant="small" color={colors.secondary} style={{ fontSize: 11 }}>Location · Seller</AppText>
-        <AppText variant="small" style={{ fontSize: 11 }} numberOfLines={1}>{sale.location_name ?? "—"} · {sale.seller_name ?? "—"}</AppText>
+        <AppText
+          variant="small"
+          color={colors.secondary}
+          style={{ fontSize: 11 }}
+        >
+          Location · Seller
+        </AppText>
+        <AppText variant="small" style={{ fontSize: 11 }} numberOfLines={1}>
+          {sale.location_name ?? "—"} · {sale.seller_name ?? "—"}
+        </AppText>
       </View>
 
-      {error ? <AppText variant="small" color={colors.danger}>{error}</AppText> : null}
+      {error ? (
+        <AppText variant="small" color={colors.danger}>
+          {error}
+        </AppText>
+      ) : null}
 
       {detail ? (
         <>
           {/* Items */}
-          <AppText variant="label" style={{ fontSize: 12, marginTop: 4 }}>Items</AppText>
+          <AppText variant="label" style={{ fontSize: 12, marginTop: 4 }}>
+            Items
+          </AppText>
           {detail.items.map((item) => (
-            <View key={item.id} className="flex-row items-center justify-between">
-              <AppText variant="small" style={{ flex: 1, fontSize: 12 }} numberOfLines={1}>{item.product_name} × {item.quantity}</AppText>
-              <AppText variant="small" style={{ fontSize: 12 }}>{formatMoney(item.line_total_cents)}</AppText>
+            <View
+              key={item.id}
+              className="flex-row items-center justify-between"
+            >
+              <AppText
+                variant="small"
+                style={{ flex: 1, fontSize: 12 }}
+                numberOfLines={1}
+              >
+                {item.product_name} × {item.quantity}
+              </AppText>
+              <AppText variant="small" style={{ fontSize: 12 }}>
+                {formatMoney(item.line_total_cents)}
+              </AppText>
             </View>
           ))}
-          {!detail.items.length ? <AppText variant="small" color={colors.secondary}>No item lines saved.</AppText> : null}
+          {!detail.items.length ? (
+            <AppText variant="small" color={colors.secondary}>
+              No item lines saved.
+            </AppText>
+          ) : null}
 
           {/* Total */}
           <View className="flex-row items-center justify-between border-t border-line pt-2">
-            <AppText variant="small" color={colors.secondary} style={{ fontSize: 12 }}>Total</AppText>
-            <AppText variant="label" style={{ fontSize: 13 }}>{formatMoney(detail.sale.total_cents)}</AppText>
+            <AppText
+              variant="small"
+              color={colors.secondary}
+              style={{ fontSize: 12 }}
+            >
+              Total
+            </AppText>
+            <AppText variant="label" style={{ fontSize: 13 }}>
+              {formatMoney(detail.sale.total_cents)}
+            </AppText>
           </View>
 
           {/* Tendered */}
-          {detail.sale.amount_tendered_cents != null && detail.sale.amount_tendered_cents > detail.sale.total_cents ? (
+          {detail.sale.amount_tendered_cents != null &&
+          detail.sale.amount_tendered_cents > detail.sale.total_cents ? (
             <View className="flex-row items-center justify-between">
-              <AppText variant="small" color={colors.secondary} style={{ fontSize: 11 }}>Cash tendered</AppText>
-              <AppText variant="small" style={{ fontSize: 11 }}>{formatMoney(detail.sale.amount_tendered_cents)}</AppText>
+              <AppText
+                variant="small"
+                color={colors.secondary}
+                style={{ fontSize: 11 }}
+              >
+                Cash tendered
+              </AppText>
+              <AppText variant="small" style={{ fontSize: 11 }}>
+                {formatMoney(detail.sale.amount_tendered_cents)}
+              </AppText>
             </View>
           ) : null}
 
           {/* Payments */}
           {detail.payments.map((p) => (
             <View key={p.id} className="flex-row items-center justify-between">
-              <AppText variant="small" color={colors.secondary} style={{ fontSize: 11 }}>{p.kind === "REPAYMENT" ? "Repayment" : "Payment"} · {methodLabel(p.method)}</AppText>
-              <AppText variant="small" style={{ fontSize: 11 }}>{formatMoney(p.amount_cents)}</AppText>
+              <AppText
+                variant="small"
+                color={colors.secondary}
+                style={{ fontSize: 11 }}
+              >
+                {p.kind === "REPAYMENT" ? "Repayment" : "Payment"} ·{" "}
+                {methodLabel(p.method)}
+              </AppText>
+              <AppText variant="small" style={{ fontSize: 11 }}>
+                {formatMoney(p.amount_cents)}
+              </AppText>
             </View>
           ))}
-          {!detail.payments.length ? <AppText variant="small" color={colors.secondary} style={{ fontSize: 11 }}>No payment recorded yet.</AppText> : null}
+          {!detail.payments.length ? (
+            <AppText
+              variant="small"
+              color={colors.secondary}
+              style={{ fontSize: 11 }}
+            >
+              No payment recorded yet.
+            </AppText>
+          ) : null}
 
           {/* Balance */}
           {detail.sale.balance_cents > 0 ? (
             <View className="flex-row items-center justify-between rounded-lg bg-warning/10 px-3 py-1.5">
-              <AppText variant="small" color={colors.warning} style={{ fontSize: 11 }}>Still owed</AppText>
-              <AppText variant="label" color={colors.warning} style={{ fontSize: 12 }}>{formatMoney(detail.sale.balance_cents)}</AppText>
+              <AppText
+                variant="small"
+                color={colors.warning}
+                style={{ fontSize: 11 }}
+              >
+                Still owed
+              </AppText>
+              <AppText
+                variant="label"
+                color={colors.warning}
+                style={{ fontSize: 12 }}
+              >
+                {formatMoney(detail.sale.balance_cents)}
+              </AppText>
             </View>
           ) : null}
 
@@ -1141,34 +2190,87 @@ function SaleDetailPanel({ db, ownerId, sale }: { db: ReturnType<typeof useSQLit
           {detail.sale.change_due_cents > 0 ? (
             detail.changeOwed?.status === "OPEN" ? (
               <View className="flex-row items-center justify-between rounded-lg bg-warning/10 px-3 py-1.5">
-                <AppText variant="small" color={colors.warning} style={{ fontSize: 11 }}>Change owed · collect later</AppText>
-                <AppText variant="label" color={colors.warning} style={{ fontSize: 12 }}>{formatMoney(detail.changeOwed.amount_cents)}</AppText>
+                <AppText
+                  variant="small"
+                  color={colors.warning}
+                  style={{ fontSize: 11 }}
+                >
+                  Change owed · collect later
+                </AppText>
+                <AppText
+                  variant="label"
+                  color={colors.warning}
+                  style={{ fontSize: 12 }}
+                >
+                  {formatMoney(detail.changeOwed.amount_cents)}
+                </AppText>
               </View>
             ) : detail.changeOwed?.status === "SETTLED" ? (
               <View className="flex-row items-center justify-between rounded-lg bg-success/10 px-3 py-1.5">
-                <AppText variant="small" color={colors.success} style={{ fontSize: 11 }}>Change returned</AppText>
-                <AppText variant="small" color={colors.success} style={{ fontSize: 11 }}>{formatMoney(detail.changeOwed.amount_cents)}</AppText>
+                <AppText
+                  variant="small"
+                  color={colors.success}
+                  style={{ fontSize: 11 }}
+                >
+                  Change returned
+                </AppText>
+                <AppText
+                  variant="small"
+                  color={colors.success}
+                  style={{ fontSize: 11 }}
+                >
+                  {formatMoney(detail.changeOwed.amount_cents)}
+                </AppText>
               </View>
             ) : null
-          ) : detail.sale.amount_tendered_cents != null && detail.sale.amount_tendered_cents > detail.sale.total_cents ? (
+          ) : detail.sale.amount_tendered_cents != null &&
+            detail.sale.amount_tendered_cents > detail.sale.total_cents ? (
             <View className="flex-row items-center justify-between rounded-lg bg-success/10 px-3 py-1.5">
-              <AppText variant="small" color={colors.success} style={{ fontSize: 11 }}>Change given</AppText>
-              <AppText variant="small" color={colors.success} style={{ fontSize: 11 }}>{formatMoney(detail.sale.amount_tendered_cents - detail.sale.total_cents)}</AppText>
+              <AppText
+                variant="small"
+                color={colors.success}
+                style={{ fontSize: 11 }}
+              >
+                Change given
+              </AppText>
+              <AppText
+                variant="small"
+                color={colors.success}
+                style={{ fontSize: 11 }}
+              >
+                {formatMoney(
+                  detail.sale.amount_tendered_cents - detail.sale.total_cents,
+                )}
+              </AppText>
             </View>
           ) : null}
         </>
       ) : !error ? (
         <View className="flex-row items-center gap-2 py-2">
           <ActivityIndicator size="small" color={colors.purple} />
-          <AppText variant="small" color={colors.secondary} style={{ fontSize: 11 }}>Loading receipt…</AppText>
+          <AppText
+            variant="small"
+            color={colors.secondary}
+            style={{ fontSize: 11 }}
+          >
+            Loading receipt…
+          </AppText>
         </View>
       ) : null}
 
       {/* Sync status */}
       <View className="flex-row items-center gap-2 pt-1">
-        <View className={`h-2 w-2 rounded-full ${sale.sync_state === "SYNCED" ? "bg-success" : "bg-info"}`} />
-        <AppText variant="small" color={colors.secondary} style={{ fontSize: 10 }}>
-          {sale.sync_state === "SYNCED" ? "Uploaded to the cloud" : "Saved on device · will sync when available"}
+        <View
+          className={`h-2 w-2 rounded-full ${sale.sync_state === "SYNCED" ? "bg-success" : "bg-info"}`}
+        />
+        <AppText
+          variant="small"
+          color={colors.secondary}
+          style={{ fontSize: 10 }}
+        >
+          {sale.sync_state === "SYNCED"
+            ? "Uploaded to the cloud"
+            : "Saved on device · will sync when available"}
         </AppText>
       </View>
     </View>
@@ -1182,19 +2284,55 @@ function SaleDetailPanel({ db, ownerId, sale }: { db: ReturnType<typeof useSQLit
 
 const st = StyleSheet.create({
   // SalesScreen
-  salesPage:          { flex: 1 },
-  salesScroller:      { flex: 1 },
+  salesPage: { flex: 1 },
+  salesScroller: { flex: 1 },
   salesScrollContent: { gap: 10, paddingBottom: 14 },
-  categoryRow:        { flexDirection: "row", alignItems: "center", gap: 8, paddingVertical: 2 },
+  categoryRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    paddingVertical: 2,
+  },
 
   // CheckoutScreen
-  checkoutPage:    { flex: 1 },
+  checkoutPage: { flex: 1 },
   checkoutScroller: { flex: 1 },
   checkoutContent: { gap: 12, paddingBottom: 130 },
 
   // SalesHistoryScreen
-  historyPage:    { flex: 1 },
+  historyPage: { flex: 1 },
   historyScroller: { flex: 1, minHeight: 0 },
   historyContent: { gap: 12, paddingBottom: 24 },
-  filterRow:      { flexDirection: "row", alignItems: "center", gap: 8, paddingVertical: 2 },
+  filterRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    paddingVertical: 2,
+  },
+  summaryPaymentRow: {
+    minHeight: 37,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.border,
+  },
+  summaryAlert: {
+    minHeight: 78,
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 7,
+    padding: 9,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 14,
+  },
+  summaryAlertIcon: {
+    width: 30,
+    height: 30,
+    alignItems: "center",
+    justifyContent: "center",
+    borderRadius: 10,
+  },
 });

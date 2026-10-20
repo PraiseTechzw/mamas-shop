@@ -207,7 +207,10 @@ export function DashboardScreen() {
         </View>
 
         {/* ── Hero Revenue Card ── */}
-        <View
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Open daily sales summary"
+          onPress={() => router.push("/sales/daily-summary")}
           className="rounded-3xl px-5 pb-4 pt-5"
           style={{
             backgroundColor: colors.deepPurple,
@@ -281,7 +284,7 @@ export function DashboardScreen() {
               </View>
             ) : null}
           </View>
-        </View>
+        </Pressable>
 
         {/* ── Today's Breakdown ── */}
         <View className="gap-2.5">

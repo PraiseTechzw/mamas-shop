@@ -3,7 +3,7 @@ import { addProduct } from '@/db/repositories/inventory';
 import { createCustomer } from '@/db/repositories/customers';
 import { ensureOwnerSeller } from '@/db/repositories/sellers';
 import { recordSale } from '@/db/repositories/sales';
-import { getDashboardData } from '@/db/repositories/dashboard';
+import { getDailyPaymentBreakdown, getDashboardData } from '@/db/repositories/dashboard';
 
 const OWNER = 'owner-1';
 
@@ -34,4 +34,10 @@ test('dashboard counts only today and keeps change owed separate from credit', a
   expect(data.salesTodayCount).toBe(1);
   expect(data.changeOwedOpenCents).toBe(100);
   expect(data.creditOutstandingCents).toBe(1000); // yesterday's unpaid sale only
+  expect(await getDailyPaymentBreakdown(db, OWNER)).toEqual({
+    CASH: 500,
+    ECOCASH: 0,
+    CARD: 0,
+    OTHER: 0,
+  });
 });

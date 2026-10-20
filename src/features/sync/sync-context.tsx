@@ -3,7 +3,7 @@ import { Image, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useSQLiteContext } from 'expo-sqlite';
 import { colors } from '@/constants/theme';
-import { subscribeToConnection, type ConnectionState } from '@/lib/network';
+import { checkConnection, subscribeToConnection, type ConnectionState } from '@/lib/network';
 import { useAuth } from '@/features/auth/auth-context';
 import { getSyncSummary } from '@/db/repositories/settings';
 import { getSyncRetryDelay, syncOutbox, type SyncResult } from '@/services/sync-engine';
@@ -21,10 +21,11 @@ type SyncContextValue = {
   lastSyncedAt: string | null;
   unavailable: SyncResult['unavailable'];
   syncNow: (force?: boolean) => Promise<void>;
+  refreshConnection: () => Promise<ConnectionState>;
 };
 
 const SyncContext = createContext<SyncContextValue>({
-  connection: 'checking', syncing: false, pending: 0, failed: 0, conflicts: 0, revision: 0, lastSyncedAt: null, unavailable: undefined, syncNow: async () => {},
+  connection: 'checking', syncing: false, pending: 0, failed: 0, conflicts: 0, revision: 0, lastSyncedAt: null, unavailable: undefined, syncNow: async () => {}, refreshConnection: async () => 'checking',
 });
 const offlineArt = require('@/assets/images/shop-illustrations/sync/offline.png');
 const pendingArt = require('@/assets/images/shop-illustrations/sync/sync-pending.png');
@@ -74,6 +75,12 @@ export function SyncProvider({ children }: PropsWithChildren) {
     }
   }, [connection, db, ownerId, refreshSummary]);
 
+  const refreshConnection = useCallback(async () => {
+    const state = await checkConnection();
+    setConnection(state);
+    return state;
+  }, []);
+
   useEffect(() => subscribeToConnection(setConnection), []);
   useEffect(() => subscribeSyncRequested(() => { void refreshSummary(); void syncNow(); }), [refreshSummary, syncNow]);
   // eslint-disable-next-line react-hooks/set-state-in-effect -- load persisted queue counts when the signed-in account changes.
@@ -89,7 +96,7 @@ export function SyncProvider({ children }: PropsWithChildren) {
     return () => { active = false; if (timer) clearTimeout(timer); };
   }, [connection, pending, failed, db, ownerId, syncNow, unavailable]);
 
-  const value = useMemo(() => ({ connection, syncing, pending, failed, conflicts, revision, lastSyncedAt, unavailable: configured ? unavailable : 'not-configured', syncNow }), [connection, syncing, pending, failed, conflicts, revision, lastSyncedAt, unavailable, configured, syncNow]);
+  const value = useMemo(() => ({ connection, syncing, pending, failed, conflicts, revision, lastSyncedAt, unavailable: configured ? unavailable : 'not-configured', syncNow, refreshConnection }), [connection, syncing, pending, failed, conflicts, revision, lastSyncedAt, unavailable, configured, syncNow, refreshConnection]);
   return <SyncContext.Provider value={value}><View style={{ flex: 1 }}><NetworkSyncBanner /><View style={{ flex: 1 }}>{children}</View></View></SyncContext.Provider>;
 }
 

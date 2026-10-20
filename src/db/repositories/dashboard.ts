@@ -1,4 +1,5 @@
 import type { SQLiteDatabase } from 'expo-sqlite';
+import type { PaymentMethod } from '@/db/schema';
 import { getOpenChangeOwedTotal } from './sales';
 
 export type DashboardData = {
@@ -17,6 +18,21 @@ export type DashboardData = {
   /** ISO string of the most recent sale, or null if none today */
   lastSaleAt: string | null;
 };
+
+export type DailyPaymentBreakdown = Record<PaymentMethod, number>;
+
+export async function getDailyPaymentBreakdown(db: SQLiteDatabase, ownerId: string): Promise<DailyPaymentBreakdown> {
+  const today = new Date();
+  const todayStart = new Date(today.getFullYear(), today.getMonth(), today.getDate()).toISOString();
+  const todayEnd = new Date(today.getFullYear(), today.getMonth(), today.getDate() + 1).toISOString();
+  const rows = await db.getAllAsync<{ method: PaymentMethod; amount_cents: number }>(
+    "SELECT method, COALESCE(SUM(amount_cents), 0) AS amount_cents FROM payments WHERE owner_id = ? AND kind = 'SALE' AND created_at >= ? AND created_at < ? GROUP BY method",
+    ownerId, todayStart, todayEnd,
+  );
+  const breakdown: DailyPaymentBreakdown = { CASH: 0, ECOCASH: 0, CARD: 0, OTHER: 0 };
+  for (const row of rows) breakdown[row.method] = row.amount_cents;
+  return breakdown;
+}
 
 export async function getDashboardData(db: SQLiteDatabase, ownerId: string): Promise<DashboardData> {
   const today = new Date();
