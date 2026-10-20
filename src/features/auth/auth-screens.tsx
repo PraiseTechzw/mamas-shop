@@ -22,19 +22,19 @@ function AuthButton({ label, onPress, variant = 'primary', loading = false, icon
   const primary = variant === 'primary';
   return <Pressable accessibilityRole="button" onPress={onPress} disabled={loading} style={({ pressed }) => [styles.buttonTouchArea, pressed && !loading && styles.buttonPressed]}>
     <View style={[styles.authButton, primary ? styles.primaryAction : styles.secondaryAction, loading && styles.buttonDisabled]}>
-      {loading ? <ActivityIndicator size="small" color={primary ? '#FFFFFF' : colors.actionBlue} /> : <><AppText variant="label" color={primary ? '#FFFFFF' : colors.actionBlue} style={styles.actionLabel}>{label}</AppText>{icon}</>}
+      {loading ? <ActivityIndicator size="small" color={primary ? '#FFFFFF' : colors.deepPurple} /> : <><AppText variant="label" color={primary ? '#FFFFFF' : colors.deepPurple} style={styles.actionLabel}>{label}</AppText>{icon}</>}
     </View>
   </Pressable>;
 }
 
 function ZimbabweFooter() {
-  return <View style={styles.country}><AppText style={styles.flag}>🇿🇼</AppText><View style={styles.footerDivider} /><AppText variant="label" color="#0646CE">Proudly Zimbabwean</AppText></View>;
+  return <View style={styles.country}><AppText style={styles.flag}>🇿🇼</AppText><View style={styles.footerDivider} /><AppText variant="label" color={colors.deepPurple}>Proudly Zimbabwean</AppText></View>;
 }
 
 function WelcomeWave() {
   return <Svg width="100%" height={52} viewBox="0 0 400 42" preserveAspectRatio="none" accessibilityLabel="Blue and yellow brand wave">
-    <Path d="M0 4 C55 31 112 39 198 38 C282 37 345 23 400 0 L400 42 L0 42 Z" fill="#FFC83D" />
-    <Path d="M0 13 C60 38 118 42 200 41 C285 40 348 28 400 8 L400 42 L0 42 Z" fill="#0646CE" />
+    <Path d="M0 4 C55 31 112 39 198 38 C282 37 345 23 400 0 L400 42 L0 42 Z" fill={colors.gold} />
+    <Path d="M0 13 C60 38 118 42 200 41 C285 40 348 28 400 8 L400 42 L0 42 Z" fill={colors.purple} />
   </Svg>;
 }
 
@@ -61,14 +61,14 @@ function StorefrontHero() {
 
 function WelcomeBenefits() {
   const benefits = [
-    { label: 'Safe &\nSecure', Icon: ShieldCheck, color: '#1764E8' },
-    { label: 'Fast\nDelivery', Icon: Truck, color: '#F0A500' },
-    { label: 'Great\nPrices', Icon: Tag, color: '#247A34' },
-    { label: 'Local\nBusiness', Icon: Heart, color: '#F13E44' },
+    { label: 'Safe &\nSecure', Icon: ShieldCheck, color: colors.purple },
+    { label: 'Fast\nDelivery', Icon: Truck, color: colors.gold },
+    { label: 'Great\nPrices', Icon: Tag, color: colors.purple },
+    { label: 'Local\nBusiness', Icon: Heart, color: colors.gold },
   ];
   return <View style={styles.benefits}>{benefits.map(({ label, Icon, color }) => <View key={label} style={styles.benefit}>
-    <View style={[styles.benefitIcon, { backgroundColor: color }]}><Icon size={19} color="#FFFFFF" fill={label.startsWith('Local') ? '#FFFFFF' : 'none'} strokeWidth={2.5} /></View>
-    <AppText variant="small" color="#0C3BA5" style={styles.benefitLabel}>{label}</AppText>
+    <View style={[styles.benefitIcon, { backgroundColor: color }]}><Icon size={19} color={color === colors.gold ? colors.deepPurple : colors.surface} fill={label.startsWith('Local') ? (color === colors.gold ? colors.deepPurple : colors.surface) : 'none'} strokeWidth={2.5} /></View>
+    <AppText variant="small" color={colors.deepPurple} style={styles.benefitLabel}>{label}</AppText>
   </View>)}</View>;
 }
 
@@ -244,14 +244,14 @@ const styles = StyleSheet.create({
   welcomeActions: { width: '92%', alignSelf: 'center', gap: 9, marginTop: 18 },
   buttonTouchArea: { width: '100%' },
   authButton: { minHeight: 54, width: '100%', borderRadius: radius.pill, paddingHorizontal: 18, alignItems: 'center', justifyContent: 'center', flexDirection: 'row', gap: 12, borderWidth: 1.5 },
-  primaryAction: { backgroundColor: colors.actionBlue, borderColor: colors.actionBlue },
-  secondaryAction: { backgroundColor: colors.surface, borderColor: colors.actionBlueBorder },
+  primaryAction: { backgroundColor: colors.purple, borderColor: colors.purple },
+  secondaryAction: { backgroundColor: colors.surface, borderColor: colors.purple },
   actionLabel: { fontFamily: 'Inter-SemiBold', fontSize: 16, letterSpacing: 0.1 },
   buttonPressed: { opacity: 0.86, transform: [{ scale: 0.99 }] },
   buttonDisabled: { opacity: 0.65 },
   country: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', paddingTop: 5, marginTop: 'auto', gap: 12 },
   flag: { fontSize: 23 },
-  footerDivider: { width: 1.5, height: 22, borderRadius: 999, backgroundColor: colors.actionBlueBorder },
+  footerDivider: { width: 1.5, height: 22, borderRadius: 999, backgroundColor: colors.gold },
   loginPage: { flexGrow: 1, paddingHorizontal: 24, paddingTop: 12, paddingBottom: 18, gap: 16 },
   backButton: { width: 38, height: 38, borderRadius: 13, backgroundColor: colors.lavenderTint, alignItems: 'center', justifyContent: 'center' },
   loginIntro: { alignItems: 'center', gap: 3, marginTop: 2, marginBottom: 2 },

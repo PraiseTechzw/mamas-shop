@@ -25,7 +25,7 @@ export function PrimaryButton({ label, onPress, disabled, loading, icon, style, 
 }
 
 export function SecondaryButton({ label, onPress, style, icon }: { label: string; onPress: () => void; style?: ViewStyle; icon?: ReactNode }) {
-  return <Pressable accessibilityRole="button" onPress={onPress} style={[styles.secondaryButton, style]}>{icon}<AppText variant="label" color={colors.actionBlue}>{label}</AppText></Pressable>;
+  return <Pressable accessibilityRole="button" onPress={onPress} style={[styles.secondaryButton, style]}>{icon}<AppText variant="label" color={colors.deepPurple}>{label}</AppText></Pressable>;
 }
 
 export function Field({ label, error, containerStyle, inputStyle, icon, focusAccent = false, inputRef, onFocus, onBlur, ...props }: TextInputProps & { label: string; error?: string; containerStyle?: ViewStyle; inputStyle?: TextStyle; icon?: ReactNode; focusAccent?: boolean; inputRef?: Ref<TextInput> }) {
@@ -82,8 +82,8 @@ const styles = StyleSheet.create({
   headingText: { flex: 1 },
   back: { height: 40, width: 40, alignItems: 'center', justifyContent: 'center', borderRadius: 13, backgroundColor: colors.lavenderTint },
   card: { backgroundColor: colors.surface, borderRadius: radius.card, padding: spacing.card, borderWidth: 1, borderColor: colors.border },
-  primaryButton: { height: 54, minHeight: 54, borderRadius: radius.pill, backgroundColor: colors.actionBlue, borderWidth: 1.5, borderColor: colors.actionBlue, paddingHorizontal: 18, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 9 },
-  secondaryButton: { height: 54, minHeight: 54, borderRadius: radius.pill, borderWidth: 1.5, borderColor: colors.actionBlueBorder, backgroundColor: colors.surface, paddingHorizontal: 16, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 },
+  primaryButton: { height: 54, minHeight: 54, borderRadius: radius.pill, backgroundColor: colors.purple, borderWidth: 1.5, borderColor: colors.purple, paddingHorizontal: 18, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 9 },
+  secondaryButton: { height: 54, minHeight: 54, borderRadius: radius.pill, borderWidth: 1.5, borderColor: colors.purple, backgroundColor: colors.surface, paddingHorizontal: 16, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 },
   disabled: { opacity: 0.78 },
   field: { gap: 0 },
   inputFrame: { minHeight: 54, flexDirection: 'row', alignItems: 'center', borderWidth: 1, borderColor: colors.border, borderRadius: 16, backgroundColor: colors.surface },

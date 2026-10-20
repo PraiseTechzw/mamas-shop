@@ -2,8 +2,6 @@ export const colors = {
   purple: '#5B43D6',
   deepPurple: '#38239B',
   lavender: '#8B78F0',
-  actionBlue: '#0646CE',
-  actionBlueBorder: '#1454F5',
   gold: '#FFC83D',
   background: '#F7F7FC',
   surface: '#FFFFFF',
