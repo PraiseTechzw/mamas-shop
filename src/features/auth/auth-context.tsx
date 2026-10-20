@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useMemo, useState, type PropsWithChildren } from 'react';
+import { createContext, useCallback, useContext, useEffect, useMemo, useState, type PropsWithChildren } from 'react';
 import type { Session } from '@supabase/supabase-js';
 import { hasSupabaseConfig, supabase } from '@/lib/supabase';
 import { useSQLiteContext } from 'expo-sqlite';
@@ -6,8 +6,8 @@ import { getShopSettings } from '@/db/repositories/settings';
 import { setAppCurrency } from '@/lib/format';
 import { persistBusinessScope } from '@/services/business-scope';
 
-type AuthContextValue = { session: Session | null; businessId: string | null; loading: boolean; configured: boolean };
-const AuthContext = createContext<AuthContextValue>({ session: null, businessId: null, loading: true, configured: false });
+type AuthContextValue = { session: Session | null; businessId: string | null; loading: boolean; configured: boolean; setActiveBusiness: (businessId: string) => Promise<void> };
+const AuthContext = createContext<AuthContextValue>({ session: null, businessId: null, loading: true, configured: false, setActiveBusiness: async () => {} });
 
 export function AuthProvider({ children }: PropsWithChildren) {
   const db = useSQLiteContext();
@@ -49,7 +49,16 @@ export function AuthProvider({ children }: PropsWithChildren) {
   }, [db, session?.user.id]);
 
   const loading = authLoading || businessLoading;
-  const value = useMemo(() => ({ session, businessId, loading, configured: hasSupabaseConfig }), [session, businessId, loading]);
+  const userId = session?.user.id;
+  const setActiveBusiness = useCallback(async (nextBusinessId: string) => {
+    if (!userId) throw new Error('Sign in before joining a shop.');
+    await persistBusinessScope(db, userId, nextBusinessId);
+    setBusinessIdState(nextBusinessId);
+    setBusinessLoading(false);
+    const settings = await getShopSettings(db, nextBusinessId);
+    setAppCurrency(settings.currency);
+  }, [db, userId]);
+  const value = useMemo(() => ({ session, businessId, loading, configured: hasSupabaseConfig, setActiveBusiness }), [session, businessId, loading, setActiveBusiness]);
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }
 

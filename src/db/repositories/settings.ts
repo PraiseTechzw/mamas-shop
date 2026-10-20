@@ -5,13 +5,11 @@ export type ShopSettings = { shop_name: string; currency: string; low_stock_aler
 export async function getShopSettings(db: SQLiteDatabase, ownerId: string) { return (await db.getFirstAsync<ShopSettings>('SELECT shop_name, currency, low_stock_alerts FROM shop_settings WHERE owner_id = ?', ownerId)) ?? { shop_name: '', currency: 'USD', low_stock_alerts: 1 }; }
 export async function needsShopSetup(db: SQLiteDatabase, ownerId: string) {
   if (!ownerId) return false;
-  const row = await db.getFirstAsync<{ named: number; records: number }>(`
-    SELECT (SELECT COUNT(*) FROM shop_settings WHERE owner_id = ? AND TRIM(shop_name) <> '') AS named,
-      (SELECT COUNT(*) FROM products WHERE owner_id = ?) +
-      (SELECT COUNT(*) FROM sales WHERE owner_id = ?) +
-      (SELECT COUNT(*) FROM customers WHERE owner_id = ?) AS records
-  `, ownerId, ownerId, ownerId, ownerId);
-  return (row?.named ?? 0) === 0 && (row?.records ?? 0) === 0;
+  const row = await db.getFirstAsync<{ named: number }>(
+    "SELECT COUNT(*) AS named FROM shop_settings WHERE owner_id = ? AND TRIM(shop_name) <> ''",
+    ownerId,
+  );
+  return (row?.named ?? 0) === 0;
 }
 export async function saveShopSettings(db: SQLiteDatabase, ownerId: string, name: string, currency: string, alerts: boolean) {
  const updatedAt = new Date().toISOString();
