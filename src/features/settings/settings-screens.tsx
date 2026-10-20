@@ -130,7 +130,7 @@ function SettingsRow({
       onPress={onPress}
       style={styles.settingsRow}
     >
-      <Icon size={18} color={colors.info} />
+      <Icon size={18} color={colors.purple} />
       <View style={{ flex: 1 }}>
         <AppText variant="label">{title}</AppText>
         <AppText
@@ -492,12 +492,12 @@ export function HelpAndSupportScreen() {
       <View className="gap-4">
         <View className="overflow-hidden rounded-3xl bg-brand px-5 py-5">
           <View className="mb-4 h-11 w-11 items-center justify-center rounded-2xl bg-white/15">
-            <CircleHelp size={23} color="#FFFFFF" />
+            <CircleHelp size={23} color=colors.surface />
           </View>
-          <AppText variant="heading" color="#FFFFFF">
+          <AppText variant="heading" color=colors.surface>
             How can we help?
           </AppText>
-          <AppText color="#EDEAFF" style={{ marginTop: 5, lineHeight: 21 }}>
+          <AppText color=colors.lavenderTint style={{ marginTop: 5, lineHeight: 21 }}>
             Find quick guidance for everyday shop tasks and offline use.
           </AppText>
           <Pressable
@@ -621,14 +621,14 @@ export function BackupRestoreScreen() {
           : syncing
             ? {
                 label: "Syncing",
-                tone: "blue" as const,
+                tone: "purple" as const,
                 title: "Your shop is syncing",
                 detail:
                   "Keep the app connected while the latest changes are shared with your signed-in shop.",
               }
             : {
                 label: lastSyncedAt ? "Up to date" : "Ready",
-                tone: lastSyncedAt ? ("green" as const) : ("blue" as const),
+                tone: lastSyncedAt ? ("green" as const) : ("purple" as const),
                 title: lastSyncedAt
                   ? "Cloud sync is up to date"
                   : "Cloud sync is ready",
@@ -683,8 +683,8 @@ export function BackupRestoreScreen() {
             </View>
             <View className="h-px bg-line" />
             <View className="flex-row items-start gap-3">
-              <View className="h-10 w-10 items-center justify-center rounded-xl bg-info/10">
-                <Cloud size={19} color={colors.info} />
+              <View className="h-10 w-10 items-center justify-center rounded-xl bg-brand-tint">
+                <Cloud size={19} color={colors.purple} />
               </View>
               <View className="min-w-0 flex-1 gap-1">
                 <View className="flex-row flex-wrap items-center justify-between gap-2">
@@ -811,7 +811,7 @@ export function AboutScreen() {
         <AppText variant="heading">Made for everyday shopkeeping</AppText>
         <View className="overflow-hidden rounded-2xl border border-line bg-surface px-4">
           <AboutFeatureRow
-            icon={<ShoppingCart size={17} color={colors.info} />}
+            icon={<ShoppingCart size={17} color={colors.purple} />}
             title="Sales & checkout"
             description="Record cash, card, EcoCash, or credit sales with itemised receipts."
           />
@@ -834,9 +834,9 @@ export function AboutScreen() {
         </View>
       </View>
 
-      <View className="gap-3 rounded-2xl border border-info/20 bg-info/10 p-4">
+      <View className="gap-3 rounded-2xl border border-brand/20 bg-brand-tint p-4">
         <View className="flex-row items-center gap-2">
-          <ShieldCheck size={18} color={colors.info} />
+          <ShieldCheck size={18} color={colors.purple} />
           <AppText variant="label">Offline-ready by design</AppText>
         </View>
         <AppText
@@ -1013,9 +1013,9 @@ export function SyncSettingsScreen() {
         back
       >
         <View className="gap-4">
-          <View className="items-center gap-3 rounded-3xl border border-info/20 bg-surface px-5 py-6">
-            <View className="h-16 w-16 items-center justify-center rounded-2xl bg-info/10">
-              <WifiOff size={30} color={colors.info} />
+          <View className="items-center gap-3 rounded-3xl border border-brand/20 bg-surface px-5 py-6">
+            <View className="h-16 w-16 items-center justify-center rounded-2xl bg-brand-tint">
+              <WifiOff size={30} color={colors.purple} />
             </View>
             <StatusBadge label="Offline · saved on this device" tone="amber" />
             <AppText variant="heading" style={{ textAlign: "center" }}>
@@ -1097,7 +1097,7 @@ export function SyncSettingsScreen() {
       : unavailable || pending || connection !== "online"
         ? "amber"
         : syncing
-          ? "blue"
+          ? "purple"
           : "green";
   const headline =
     unavailable === "not-configured"
@@ -1224,8 +1224,8 @@ export function SyncSettingsScreen() {
         </View>
         <View className="h-px bg-line" />
         <View className="flex-row items-center gap-3">
-          <View className="h-10 w-10 items-center justify-center rounded-xl bg-info/10">
-            <Wifi size={18} color={colors.info} />
+          <View className="h-10 w-10 items-center justify-center rounded-xl bg-brand-tint">
+            <Wifi size={18} color={colors.purple} />
           </View>
           <View className="min-w-0 flex-1 gap-0.5">
             <AppText variant="label">Cloud sync</AppText>
@@ -1243,7 +1243,7 @@ export function SyncSettingsScreen() {
                   : "Offline"
             }
             tone={
-              unavailable ? "amber" : connection === "online" ? "blue" : "amber"
+              unavailable ? "amber" : connection === "online" ? "purple" : "amber"
             }
           />
         </View>
@@ -1399,7 +1399,7 @@ const styles = StyleSheet.create({
     borderStyle: "dashed",
     borderColor: colors.border,
     borderRadius: 13,
-    backgroundColor: "#FAFAFE",
+    backgroundColor: colors.background,
   },
   previewLine: {
     flexDirection: "row",

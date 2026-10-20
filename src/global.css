@@ -25,7 +25,6 @@
   --color-warning: #d97706;
   --color-warning-tint: #fff5dc;
   --color-danger: #dc3545;
-  --color-info: #2474e5;
 
   /* Expo Font family names are registered in src/app/_layout.tsx. */
   --font-display: 'Poppins-SemiBold', 'Poppins', sans-serif;

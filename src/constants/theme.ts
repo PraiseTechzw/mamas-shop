@@ -15,8 +15,6 @@ export const colors = {
   warningTint: '#FFF5DC',
   danger: '#DC3545',
   dangerTint: '#FCEBED',
-  info: '#2474E5',
-  infoTint: '#EAF2FF',
 } as const;
 
 export const spacing = { page: 20, card: 16, section: 24 } as const;

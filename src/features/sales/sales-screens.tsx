@@ -190,7 +190,7 @@ const dailyPaymentRows: {
   color: string;
 }[] = [
   { label: "Cash", method: "CASH", color: colors.success },
-  { label: "EcoCash", method: "ECOCASH", color: colors.info },
+  { label: "EcoCash", method: "ECOCASH", color: colors.purple },
   { label: "Card", method: "CARD", color: colors.purple },
   { label: "Other", method: "OTHER", color: colors.secondary },
 ];
@@ -778,7 +778,7 @@ const paymentMethods: {
     key: "ECOCASH",
     label: "EcoCash",
     detail: "Mobile money",
-    icon: <Smartphone size={18} color={colors.info} />,
+    icon: <Smartphone size={18} color={colors.purple} />,
   },
   {
     key: "CARD",
@@ -1367,13 +1367,13 @@ export function CheckoutScreen() {
           className={`min-h-[54px] flex-row items-center justify-center gap-2.5 rounded-2xl ${canComplete ? "bg-brand active:opacity-85" : "bg-brand/50"}`}
         >
           {busy ? (
-            <ActivityIndicator size="small" color="#fff" />
+            <ActivityIndicator size="small" color=colors.surface />
           ) : (
-            <Check size={19} color="#fff" />
+            <Check size={19} color=colors.surface />
           )}
           <AppText
             variant="label"
-            color="#fff"
+            color=colors.surface
             numberOfLines={1}
             style={{ fontSize: 15 }}
           >
@@ -2262,7 +2262,7 @@ function SaleDetailPanel({
       {/* Sync status */}
       <View className="flex-row items-center gap-2 pt-1">
         <View
-          className={`h-2 w-2 rounded-full ${sale.sync_state === "SYNCED" ? "bg-success" : "bg-info"}`}
+          className={`h-2 w-2 rounded-full ${sale.sync_state === "SYNCED" ? "bg-success" : "bg-brand"}`}
         />
         <AppText
           variant="small"

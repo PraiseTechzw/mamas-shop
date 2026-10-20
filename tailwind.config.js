@@ -17,7 +17,6 @@ module.exports = {
         warning: '#D97706',
         'warning-tint': '#FFF5DC',
         danger: '#DC3545',
-        info: '#2474E5',
       },
       fontFamily: {
         display: ['Poppins-SemiBold'],

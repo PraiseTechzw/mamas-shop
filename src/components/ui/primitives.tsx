@@ -77,8 +77,8 @@ export function LoadingScreen({ label = 'Getting things ready…' }: { label?: s
   return <SafeAreaView className="flex-1 bg-canvas" style={{ alignItems: 'center', justifyContent: 'center' }}><ActivityIndicator size="large" color={colors.purple} /><AppText color={colors.secondary} style={{ marginTop: 14 }}>{label}</AppText></SafeAreaView>;
 }
 
-export function StatusBadge({ label, tone = 'purple' }: { label: string; tone?: 'purple' | 'green' | 'amber' | 'red' | 'blue' }) {
-  const tones = { purple: [colors.lavenderTint, colors.deepPurple], green: [colors.successTint, colors.success], amber: [colors.warningTint, colors.warning], red: [colors.dangerTint, colors.danger], blue: [colors.infoTint, colors.info] } as const;
+export function StatusBadge({ label, tone = 'purple' }: { label: string; tone?: 'purple' | 'green' | 'amber' | 'red' }) {
+  const tones = { purple: [colors.lavenderTint, colors.deepPurple], green: [colors.successTint, colors.success], amber: [colors.warningTint, colors.warning], red: [colors.dangerTint, colors.danger] } as const;
   const selected = tones[tone];
   return <View style={{ backgroundColor: selected[0], paddingHorizontal: 10, paddingVertical: 6, borderRadius: radius.chip, alignSelf: 'flex-start' }}><AppText variant="small" color={selected[1]}>{label}</AppText></View>;
 }

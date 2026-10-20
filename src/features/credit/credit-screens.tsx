@@ -55,10 +55,15 @@ function initials(name: string) {
     .toUpperCase();
 }
 
-function avatarBg(name: string) {
-  const hues = ['bg-brand', 'bg-info', 'bg-success', 'bg-warning', 'bg-gold'];
+function avatarPalette(name: string) {
+  const hues = [
+    { background: 'bg-brand', foreground: colors.surface },
+    { background: 'bg-brand-deep', foreground: colors.surface },
+    { background: 'bg-brand-soft', foreground: colors.surface },
+    { background: 'bg-gold', foreground: colors.deepPurple },
+  ];
   const idx = name.charCodeAt(0) % hues.length;
-  return hues[idx] ?? 'bg-brand';
+  return hues[idx] ?? hues[0]!;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -167,8 +172,7 @@ function CustomerList({ selectForCreditSale = false }: { selectForCreditSale?: b
       {/* ── Summary bar (main list only) ── */}
       {!selectForCreditSale ? (
         <View className="flex-row gap-2.5">
-          <View className="min-w-0 flex-1 gap-1 rounded-2xl border border-line bg-surface px-4 py-3"
-            style={{ shadowColor: '#202033', shadowOpacity: 0.05, shadowRadius: 6, shadowOffset: { width: 0, height: 2 }, elevation: 2 }}
+          <View className="min-w-0 flex-1 gap-1 rounded-2xl border border-line bg-surface px-4 py-3 shadow-sm"
           >
             <AppText variant="small" color={colors.secondary} style={{ fontSize: 10, letterSpacing: 0.5, textTransform: 'uppercase' }}>
               Total owed
@@ -177,8 +181,7 @@ function CustomerList({ selectForCreditSale = false }: { selectForCreditSale?: b
               {formatMoney(totalOwed)}
             </AppText>
           </View>
-          <View className="min-w-0 flex-1 gap-1 rounded-2xl border border-line bg-surface px-4 py-3"
-            style={{ shadowColor: '#202033', shadowOpacity: 0.05, shadowRadius: 6, shadowOffset: { width: 0, height: 2 }, elevation: 2 }}
+          <View className="min-w-0 flex-1 gap-1 rounded-2xl border border-line bg-surface px-4 py-3 shadow-sm"
           >
             <AppText variant="small" color={colors.secondary} style={{ fontSize: 10, letterSpacing: 0.5, textTransform: 'uppercase' }}>
               Owing customers
@@ -272,8 +275,7 @@ function CustomerList({ selectForCreditSale = false }: { selectForCreditSale?: b
 
       {/* ── Customer list ── */}
       {filtered.length ? (
-        <View className="overflow-hidden rounded-2xl border border-line bg-surface"
-          style={{ shadowColor: '#202033', shadowOpacity: 0.05, shadowRadius: 8, shadowOffset: { width: 0, height: 3 }, elevation: 2 }}
+        <View className="overflow-hidden rounded-2xl border border-line bg-surface shadow-sm"
         >
           {filtered.map((customer, idx) => {
             const isLast = idx === filtered.length - 1;
@@ -286,8 +288,8 @@ function CustomerList({ selectForCreditSale = false }: { selectForCreditSale?: b
                 className={`flex-row items-center gap-3 px-4 py-3 active:bg-brand-tint/50 ${isLast ? '' : 'border-b border-line'}`}
               >
                 {/* Avatar */}
-                <View className={`h-11 w-11 items-center justify-center rounded-full ${avatarBg(customer.name)}`}>
-                  <AppText variant="label" color={colors.surface} style={{ fontSize: 13 }}>
+                <View className={`h-11 w-11 items-center justify-center rounded-full ${avatarPalette(customer.name).background}`}>
+                  <AppText variant="label" color={avatarPalette(customer.name).foreground} style={{ fontSize: 13 }}>
                     {initials(customer.name)}
                   </AppText>
                 </View>
@@ -428,7 +430,7 @@ export function CustomerAccountScreen() {
 
   const methodOptions: { key: PaymentMethod; label: string; icon: React.ReactNode }[] = [
     { key: 'CASH',    label: 'Cash',    icon: <Banknote  size={16} color={colors.success} /> },
-    { key: 'ECOCASH', label: 'EcoCash', icon: <Smartphone size={16} color={colors.info} /> },
+    { key: 'ECOCASH', label: 'EcoCash', icon: <Smartphone size={16} color={colors.purple} /> },
     { key: 'CARD',    label: 'Card',    icon: <WalletCards size={16} color={colors.purple} /> },
   ];
 
@@ -439,8 +441,8 @@ export function CustomerAccountScreen() {
       <View
         className="flex-row items-center gap-3 rounded-2xl border border-line bg-surface px-4 py-3 shadow-sm"
       >
-        <View className={`h-14 w-14 items-center justify-center rounded-full ${avatarBg(customer.name)}`}>
-          <AppText variant="heading" color={colors.surface} style={{ fontSize: 20 }}>
+        <View className={`h-14 w-14 items-center justify-center rounded-full ${avatarPalette(customer.name).background}`}>
+          <AppText variant="heading" color={avatarPalette(customer.name).foreground} style={{ fontSize: 20 }}>
             {initials(customer.name)}
           </AppText>
         </View>
@@ -773,7 +775,7 @@ export function RepaymentScreen() {
 
   const methodOptions: { key: PaymentMethod; label: string; detail: string; icon: React.ReactNode }[] = [
     { key: 'CASH',    label: 'Cash',    detail: 'Paid in person',  icon: <Banknote   size={18} color={colors.success} /> },
-    { key: 'ECOCASH', label: 'EcoCash', detail: 'Mobile money',    icon: <Smartphone size={18} color={colors.info} /> },
+    { key: 'ECOCASH', label: 'EcoCash', detail: 'Mobile money',    icon: <Smartphone size={18} color={colors.purple} /> },
     { key: 'CARD',    label: 'Card',    detail: 'Other payment',   icon: <WalletCards size={18} color={colors.purple} /> },
   ];
 
@@ -783,11 +785,10 @@ export function RepaymentScreen() {
       {/* ── Customer summary ── */}
       {customer ? (
         <View
-          className="flex-row items-center gap-3 rounded-2xl border border-line bg-surface px-4 py-3"
-          style={{ shadowColor: '#202033', shadowOpacity: 0.06, shadowRadius: 8, shadowOffset: { width: 0, height: 3 }, elevation: 2 }}
+          className="flex-row items-center gap-3 rounded-2xl border border-line bg-surface px-4 py-3 shadow-sm"
         >
-          <View className={`h-12 w-12 items-center justify-center rounded-full ${avatarBg(customer.name)}`}>
-            <AppText variant="label" color={colors.surface} style={{ fontSize: 15 }}>{initials(customer.name)}</AppText>
+          <View className={`h-12 w-12 items-center justify-center rounded-full ${avatarPalette(customer.name).background}`}>
+            <AppText variant="label" color={avatarPalette(customer.name).foreground} style={{ fontSize: 15 }}>{initials(customer.name)}</AppText>
           </View>
           <View className="min-w-0 flex-1 gap-0.5">
             <AppText variant="label" style={{ fontSize: 14 }} numberOfLines={1}>{customer.name}</AppText>
@@ -802,8 +803,7 @@ export function RepaymentScreen() {
 
       {/* ── Payment form ── */}
       <View
-        className="gap-4 rounded-2xl border border-line bg-surface px-4 py-4"
-        style={{ shadowColor: '#202033', shadowOpacity: 0.05, shadowRadius: 8, shadowOffset: { width: 0, height: 3 }, elevation: 2 }}
+        className="gap-4 rounded-2xl border border-line bg-surface px-4 py-4 shadow-sm"
       >
         <AppText variant="heading" style={{ fontSize: 15 }}>Payment details</AppText>
 
@@ -872,7 +872,7 @@ export function RepaymentScreen() {
         loading={busy}
         disabled={!customer || customer.balance_cents <= 0}
         onPress={() => void save()}
-        icon={<CreditCard size={18} color="#fff" />}
+        icon={<CreditCard size={18} color={colors.surface} />}
       />
 
     </Page>

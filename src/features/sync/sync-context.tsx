@@ -123,8 +123,8 @@ export function NetworkSyncBanner() {
 
 const styles = StyleSheet.create({
   banner: { minHeight: 44, paddingHorizontal: 14, paddingVertical: 5, flexDirection: 'row', alignItems: 'center', gap: 9, backgroundColor: colors.lavenderTint, borderBottomWidth: 1, borderColor: colors.border },
-  offline: { backgroundColor: '#FFF5DC' },
-  failed: { backgroundColor: '#FCEBED' },
+  offline: { backgroundColor: colors.warningTint },
+  failed: { backgroundColor: colors.dangerTint },
   art: { width: 34, height: 34 },
   message: { flex: 1, gap: 1 },
 });
