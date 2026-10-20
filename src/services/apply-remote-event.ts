@@ -15,6 +15,7 @@ type Payload = Record<string, unknown>;
 const text = (value: unknown, fallback = '') => typeof value === 'string' ? value : fallback;
 const number = (value: unknown, fallback = 0) => typeof value === 'number' && Number.isFinite(value) ? value : fallback;
 const int = (value: unknown, fallback = 0) => Math.round(number(value, fallback));
+const isNonnegativeSafeInt = (value: unknown): value is number => typeof value === 'number' && Number.isSafeInteger(value) && value >= 0;
 const object = (value: unknown): Payload => value && typeof value === 'object' && !Array.isArray(value) ? value as Payload : {};
 const either = (payload: Payload, camel: string, snake: string) => payload[camel] ?? payload[snake];
 
@@ -41,6 +42,7 @@ async function applyProduct(db: SQLiteDatabase, event: RemoteSyncEvent, payload:
     return;
   }
   const current = await db.getFirstAsync<{ updated_at: string }>('SELECT updated_at FROM products WHERE id = ? AND owner_id = ?', id, ownerId);
+  if (!current) throw new Error('The product profile has not arrived on this device yet.');
   if (current && current.updated_at >= at) return;
   await db.runAsync('UPDATE products SET name = ?, sku = ?, category = ?, unit = ?, price_cents = ?, cost_cents = ?, reorder_level = ?, updated_at = ? WHERE id = ? AND owner_id = ?', name, text(payload.sku) || null, text(payload.category, 'Other'), text(payload.unit, 'each'), int(either(payload, 'priceCents', 'price_cents')), int(either(payload, 'costCents', 'cost_cents')), number(either(payload, 'reorder', 'reorder_level')), at, id, ownerId);
 }
@@ -49,6 +51,36 @@ async function applySale(db: SQLiteDatabase, event: RemoteSyncEvent, payload: Pa
   const ownerId = event.owner_id;
   const id = text(payload.id, event.entity_id);
   if (await db.getFirstAsync('SELECT id FROM sales WHERE id = ? AND owner_id = ?', id, ownerId)) return;
+  const totalCents = payload.total_cents;
+  const paidCents = payload.paid_cents;
+  const balanceCents = payload.balance_cents;
+  const changeDueCents = payload.change_due_cents ?? 0;
+  const tenderedCents = payload.amount_tendered_cents;
+  if (!isNonnegativeSafeInt(totalCents) || !isNonnegativeSafeInt(paidCents) || !isNonnegativeSafeInt(balanceCents) || !isNonnegativeSafeInt(changeDueCents) || paidCents > totalCents || paidCents + balanceCents !== totalCents) {
+    throw new Error('The sale totals are invalid or do not balance.');
+  }
+  const status = balanceCents === 0 ? 'PAID' : paidCents > 0 ? 'PARTIAL' : 'CREDIT';
+  if (payload.status !== status) throw new Error('The sale status does not match its payment balance.');
+  const paymentMethod = text(payload.payment_method, 'CASH');
+  if (!['CASH', 'ECOCASH', 'CARD', 'OTHER'].includes(paymentMethod)) throw new Error('The sale has an unsupported payment method.');
+  if (changeDueCents > 0 && paymentMethod !== 'CASH') throw new Error('Only cash sales can create change owed.');
+  if (tenderedCents !== undefined && (!isNonnegativeSafeInt(tenderedCents) || changeDueCents > Math.max(0, tenderedCents - totalCents))) throw new Error('The tendered amount does not cover the change owed.');
+  const items = Array.isArray(payload.items) ? payload.items.map(object) : [];
+  if (!items.length) throw new Error('Sale event contains no items.');
+  let computedTotal = 0;
+  for (const item of items) {
+    const quantity = item.quantity;
+    const unitPrice = either(item, 'unitPrice', 'unit_price_cents');
+    const lineTotal = either(item, 'lineTotal', 'line_total_cents');
+    const unitCost = either(item, 'unitCost', 'unit_cost_cents') ?? 0;
+    if (typeof quantity !== 'number' || !Number.isFinite(quantity) || quantity <= 0 || !isNonnegativeSafeInt(unitPrice) || !isNonnegativeSafeInt(lineTotal) || !isNonnegativeSafeInt(unitCost) || Math.round(quantity * unitPrice) !== lineTotal) {
+      throw new Error('A sale item has an invalid quantity or amount.');
+    }
+    computedTotal += lineTotal;
+    if (!Number.isSafeInteger(computedTotal)) throw new Error('The sale total exceeds the supported amount.');
+  }
+  if (computedTotal !== totalCents) throw new Error('The sale item amounts do not match the sale total.');
+  if ((balanceCents > 0 || changeDueCents > 0) && !text(payload.customer_id)) throw new Error('A sale balance or change owed record requires a customer.');
   let locationId = text(payload.location_id);
   let sellerId = text(payload.seller_id);
   if (!locationId) {
@@ -67,8 +99,6 @@ async function applySale(db: SQLiteDatabase, event: RemoteSyncEvent, payload: Pa
   if (!seller) await db.runAsync('INSERT OR IGNORE INTO sellers (id, owner_id, name, is_owner, is_active, created_at, updated_at) VALUES (?, ?, ?, ?, 1, ?, ?)', sellerId, ownerId, text(payload.seller_name, 'Seller'), sellerId === ownerId ? 1 : 0, event.occurred_at, event.occurred_at);
   const customerId = text(payload.customer_id) || null;
   if (customerId && !await db.getFirstAsync('SELECT id FROM customers WHERE id = ? AND owner_id = ?', customerId, ownerId)) throw new Error('The sale’s customer profile has not arrived on this device yet.');
-  const items = Array.isArray(payload.items) ? payload.items.map(object) : [];
-  if (!items.length) throw new Error('Sale event contains no items.');
   for (const item of items) {
     const productId = text(either(item, 'productId', 'product_id'));
     const quantity = number(item.quantity);
@@ -79,7 +109,7 @@ async function applySale(db: SQLiteDatabase, event: RemoteSyncEvent, payload: Pa
     const global = await db.runAsync('UPDATE products SET stock_quantity = stock_quantity - ?, updated_at = ? WHERE owner_id = ? AND id = ? AND stock_quantity >= ?', quantity, event.occurred_at, ownerId, productId, quantity);
     if (global.changes !== 1) throw new Error('The sale exceeds total stock on this device.');
   }
-  await db.runAsync('INSERT INTO sales (id, owner_id, receipt_number, customer_id, total_cents, paid_cents, balance_cents, status, created_by, created_at, sync_state, seller_id, location_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, \'SYNCED\', ?, ?)', id, ownerId, text(payload.receipt_number, id), customerId, int(payload.total_cents), int(payload.paid_cents), int(payload.balance_cents), text(payload.status, 'PAID'), text(payload.created_by) || ownerId, event.occurred_at, sellerId, locationId);
+  await db.runAsync('INSERT INTO sales (id, owner_id, receipt_number, customer_id, total_cents, paid_cents, balance_cents, status, created_by, created_at, sync_state, seller_id, location_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, \'SYNCED\', ?, ?)', id, ownerId, text(payload.receipt_number, id), customerId, totalCents, paidCents, balanceCents, status, text(payload.created_by) || ownerId, event.occurred_at, sellerId, locationId);
   for (const [index, item] of items.entries()) {
     const itemId = text(item.id, `${id}:item:${index}`);
     const productId = text(either(item, 'productId', 'product_id'));
@@ -91,14 +121,13 @@ async function applySale(db: SQLiteDatabase, event: RemoteSyncEvent, payload: Pa
     await db.runAsync("INSERT OR IGNORE INTO stock_movements (id, owner_id, product_id, movement_type, quantity, from_location_id, unit_cost_cents, note, created_at, sync_state) VALUES (?, ?, ?, 'SALE', ?, ?, ?, ?, ?, 'SYNCED')", `${id}:sale-stock:${index}`, ownerId, productId, quantity, locationId, unitCost, 'Sale ' + text(payload.receipt_number, id), event.occurred_at);
   }
   if (customerId) await db.runAsync("INSERT OR IGNORE INTO account_entries (id, owner_id, customer_id, sale_id, entry_type, amount_cents, note, created_at) VALUES (?, ?, ?, ?, 'SALE_CHARGE', ?, ?, ?)", `${id}:credit`, ownerId, customerId, id, int(payload.total_cents), 'Sale ' + text(payload.receipt_number, id), event.occurred_at);
-  const changeDue = int(payload.change_due_cents);
-  if (changeDue > 0 && customerId) {
-    await db.runAsync("INSERT OR IGNORE INTO change_owed (id, owner_id, customer_id, sale_id, receipt_number, amount_cents, status, created_at, sync_state) VALUES (?, ?, ?, ?, ?, ?, 'OPEN', ?, 'SYNCED')", text(payload.change_owed_id, `${id}:change`), ownerId, customerId, id, text(payload.receipt_number, id), changeDue, event.occurred_at);
+  if (changeDueCents > 0 && customerId) {
+    await db.runAsync("INSERT OR IGNORE INTO change_owed (id, owner_id, customer_id, sale_id, receipt_number, amount_cents, status, created_at, sync_state) VALUES (?, ?, ?, ?, ?, ?, 'OPEN', ?, 'SYNCED')", text(payload.change_owed_id, `${id}:change`), ownerId, customerId, id, text(payload.receipt_number, id), changeDueCents, event.occurred_at);
   }
-  const paid = int(payload.paid_cents);
+  const paid = paidCents;
   if (paid > 0) {
     const paymentId = `${id}:payment`;
-    await db.runAsync("INSERT OR IGNORE INTO payments (id, owner_id, customer_id, sale_id, amount_cents, method, kind, note, created_at, sync_state) VALUES (?, ?, ?, ?, ?, ?, 'SALE', ?, ?, 'SYNCED')", paymentId, ownerId, customerId, id, paid, text(payload.payment_method, 'CASH'), 'Payment received · ' + text(payload.payment_method, 'CASH'), event.occurred_at);
+    await db.runAsync("INSERT OR IGNORE INTO payments (id, owner_id, customer_id, sale_id, amount_cents, method, kind, note, created_at, sync_state) VALUES (?, ?, ?, ?, ?, ?, 'SALE', ?, ?, 'SYNCED')", paymentId, ownerId, customerId, id, paid, paymentMethod, 'Payment received · ' + paymentMethod, event.occurred_at);
     if (customerId) await db.runAsync("INSERT OR IGNORE INTO account_entries (id, owner_id, customer_id, sale_id, payment_id, entry_type, amount_cents, note, created_at) VALUES (?, ?, ?, ?, ?, 'PAYMENT', ?, ?, ?)", `${id}:paid-entry`, ownerId, customerId, id, paymentId, -paid, 'Payment received', event.occurred_at);
   }
 }
@@ -115,8 +144,10 @@ async function applyStockMovement(db: SQLiteDatabase, event: RemoteSyncEvent, pa
   const locationId = text(payload.location_id);
   if (kind === 'stock.receive') {
     await ensureLocation(db, ownerId, locationId, 'Shop location', false, at);
-    const quantity = number(payload.quantity);
-    const cost = int(payload.unit_cost_cents);
+    const quantity = payload.quantity;
+    const costValue = payload.unit_cost_cents ?? 0;
+    if (typeof quantity !== 'number' || !Number.isFinite(quantity) || quantity <= 0 || !isNonnegativeSafeInt(costValue)) throw new Error('The received stock quantity or cost is invalid.');
+    const cost = costValue;
     await db.runAsync('INSERT INTO inventory_balances (owner_id, product_id, location_id, quantity, updated_at) VALUES (?, ?, ?, ?, ?) ON CONFLICT(product_id, location_id) DO UPDATE SET quantity = quantity + excluded.quantity, updated_at = excluded.updated_at', ownerId, productId, locationId, quantity, at);
     await db.runAsync('UPDATE products SET stock_quantity = stock_quantity + ?, cost_cents = ?, updated_at = ? WHERE id = ? AND owner_id = ?', quantity, cost, at, productId, ownerId);
     await db.runAsync("INSERT INTO stock_movements (id, owner_id, product_id, movement_type, quantity, to_location_id, unit_cost_cents, note, created_at, sync_state) VALUES (?, ?, ?, 'RECEIVE', ?, ?, ?, ?, ?, 'SYNCED')", id, ownerId, productId, quantity, locationId, cost, text(payload.note) || null, at);
@@ -124,7 +155,8 @@ async function applyStockMovement(db: SQLiteDatabase, event: RemoteSyncEvent, pa
   }
   if (kind === 'stock.adjust') {
     await ensureLocation(db, ownerId, locationId, 'Shop location', false, at);
-    const delta = number(payload.delta);
+    const delta = payload.delta;
+    if (typeof delta !== 'number' || !Number.isFinite(delta)) throw new Error('The stock count adjustment is invalid.');
     if (delta < 0) {
       const changed = await db.runAsync('UPDATE inventory_balances SET quantity = quantity + ?, updated_at = ? WHERE owner_id = ? AND product_id = ? AND location_id = ? AND quantity >= ?', delta, at, ownerId, productId, locationId, -delta);
       if (changed.changes !== 1) throw new Error('A stock count would make this location negative; resolve the count on the original device.');
@@ -139,7 +171,8 @@ async function applyStockMovement(db: SQLiteDatabase, event: RemoteSyncEvent, pa
     const toId = text(payload.to_location_id);
     await ensureLocation(db, ownerId, fromId, 'Shop location', false, at);
     await ensureLocation(db, ownerId, toId, 'Shop location', false, at);
-    const quantity = number(payload.quantity);
+    const quantity = payload.quantity;
+    if (typeof quantity !== 'number' || !Number.isFinite(quantity) || quantity <= 0 || fromId === toId) throw new Error('The stock transfer quantity or locations are invalid.');
     const changed = await db.runAsync('UPDATE inventory_balances SET quantity = quantity - ?, updated_at = ? WHERE owner_id = ? AND product_id = ? AND location_id = ? AND quantity >= ?', quantity, at, ownerId, productId, fromId, quantity);
     if (changed.changes !== 1) throw new Error('A transfer exceeds stock at its source location.');
     await db.runAsync('INSERT INTO inventory_balances (owner_id, product_id, location_id, quantity, updated_at) VALUES (?, ?, ?, ?, ?) ON CONFLICT(product_id, location_id) DO UPDATE SET quantity = quantity + excluded.quantity, updated_at = excluded.updated_at', ownerId, productId, toId, quantity, at);
@@ -187,7 +220,11 @@ export async function applyRemoteEvent(db: SQLiteDatabase, event: RemoteSyncEven
       const customerId = text(payload.customer_id);
       if (await db.getFirstAsync('SELECT id FROM payments WHERE id = ? AND owner_id = ?', id, event.owner_id)) break;
       if (!await db.getFirstAsync('SELECT id FROM customers WHERE id = ? AND owner_id = ?', customerId, event.owner_id)) throw new Error('The repayment customer has not arrived on this device yet.');
-      const amount = int(payload.amount_cents);
+      const amount = payload.amount_cents;
+      if (!isNonnegativeSafeInt(amount) || amount <= 0) throw new Error('The repayment amount is invalid.');
+      if (!['CASH', 'ECOCASH', 'CARD', 'OTHER'].includes(text(payload.method, 'CASH'))) throw new Error('The repayment method is invalid.');
+      const balance = await db.getFirstAsync<{ amount: number }>('SELECT COALESCE(SUM(amount_cents), 0) AS amount FROM account_entries WHERE owner_id = ? AND customer_id = ?', event.owner_id, customerId);
+      if (amount > (balance?.amount ?? 0)) throw new Error('This repayment is greater than the remaining customer balance. Review the other device’s repayment.');
       const note = text(payload.note) || null;
       await db.runAsync("INSERT INTO payments (id, owner_id, customer_id, amount_cents, method, kind, note, created_at, sync_state) VALUES (?, ?, ?, ?, ?, 'REPAYMENT', ?, ?, 'SYNCED')", id, event.owner_id, customerId, amount, text(payload.method, 'CASH'), note, text(payload.created_at, event.occurred_at));
       await db.runAsync("INSERT INTO account_entries (id, owner_id, customer_id, payment_id, entry_type, amount_cents, note, created_at) VALUES (?, ?, ?, ?, 'PAYMENT', ?, ?, ?)", `${id}:account`, event.owner_id, customerId, id, -amount, note || 'Payment received', text(payload.created_at, event.occurred_at));
@@ -198,7 +235,8 @@ export async function applyRemoteEvent(db: SQLiteDatabase, event: RemoteSyncEven
       const customerId = text(payload.customer_id);
       if (await db.getFirstAsync('SELECT id FROM change_owed WHERE id = ? AND owner_id = ?', id, event.owner_id)) break;
       if (!await db.getFirstAsync('SELECT id FROM customers WHERE id = ? AND owner_id = ?', customerId, event.owner_id)) throw new Error('The customer owed this change has not arrived on this device yet.');
-      await db.runAsync("INSERT OR IGNORE INTO change_owed (id, owner_id, customer_id, sale_id, receipt_number, amount_cents, status, created_at, sync_state) VALUES (?, ?, ?, ?, ?, ?, 'OPEN', ?, 'SYNCED')", id, event.owner_id, customerId, text(payload.sale_id) || null, text(payload.receipt_number) || null, int(payload.amount_cents), text(payload.created_at, event.occurred_at));
+      if (!isNonnegativeSafeInt(payload.amount_cents) || payload.amount_cents <= 0) throw new Error('The change owed amount is invalid.');
+      await db.runAsync("INSERT OR IGNORE INTO change_owed (id, owner_id, customer_id, sale_id, receipt_number, amount_cents, status, created_at, sync_state) VALUES (?, ?, ?, ?, ?, ?, 'OPEN', ?, 'SYNCED')", id, event.owner_id, customerId, text(payload.sale_id) || null, text(payload.receipt_number) || null, payload.amount_cents, text(payload.created_at, event.occurred_at));
       break;
     }
     case 'change_owed.settle': {
@@ -210,7 +248,9 @@ export async function applyRemoteEvent(db: SQLiteDatabase, event: RemoteSyncEven
       break;
     }
     case 'expense.create':
-      await db.runAsync("INSERT OR IGNORE INTO expenses (id, owner_id, title, category, amount_cents, payment_method, note, spent_at, created_at, sync_state) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'SYNCED')", text(payload.id, event.entity_id), event.owner_id, text(payload.title, 'Expense'), text(payload.category, 'Other'), int(either(payload, 'amountCents', 'amount_cents')), text(either(payload, 'method', 'payment_method'), 'CASH'), text(payload.note) || null, text(either(payload, 'spentAt', 'spent_at'), event.occurred_at), text(payload.created_at, event.occurred_at));
+      if (!isNonnegativeSafeInt(either(payload, 'amountCents', 'amount_cents')) || Number(either(payload, 'amountCents', 'amount_cents')) <= 0) throw new Error('The expense amount is invalid.');
+      if (!['CASH', 'ECOCASH', 'CARD', 'OTHER'].includes(text(either(payload, 'method', 'payment_method'), 'CASH'))) throw new Error('The expense payment method is invalid.');
+      await db.runAsync("INSERT OR IGNORE INTO expenses (id, owner_id, title, category, amount_cents, payment_method, note, spent_at, created_at, sync_state) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'SYNCED')", text(payload.id, event.entity_id), event.owner_id, text(payload.title, 'Expense'), text(payload.category, 'Other'), either(payload, 'amountCents', 'amount_cents') as number, text(either(payload, 'method', 'payment_method'), 'CASH'), text(payload.note) || null, text(either(payload, 'spentAt', 'spent_at'), event.occurred_at), text(payload.created_at, event.occurred_at));
       break;
     case 'settings.update': {
       const at = text(payload.updated_at, event.occurred_at);

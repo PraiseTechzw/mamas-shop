@@ -1,13 +1,13 @@
-import { useCallback, useEffect, useState } from 'react';
-import { Pressable, StyleSheet, View } from 'react-native';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { Pressable, View } from 'react-native';
 import { router } from 'expo-router';
 import { useSQLiteContext } from 'expo-sqlite';
 import { Building2, Check, ChevronRight, Store, WandSparkles } from 'lucide-react-native';
 import { colors } from '@/constants/theme';
-import { AppText, Card, Field, LoadingScreen, Page, PrimaryButton } from '@/components/ui/primitives';
+import { AppText, Card, Field, LoadingScreen, Page, PrimaryButton, SecondaryButton } from '@/components/ui/primitives';
 import { useAuth } from '@/features/auth/auth-context';
 import { supabase } from '@/lib/supabase';
-import { getShopSettings, saveShopSettings } from '@/db/repositories/settings';
+import { clearSetupDraft, getSetupDraft, getShopSettings, hasLocalShopData, saveSetupDraft, saveShopSettings } from '@/db/repositories/settings';
 import { ensurePrimaryLocation } from '@/db/repositories/inventory';
 import { ensureOwnerSeller } from '@/db/repositories/sellers';
 import { setAppCurrency } from '@/lib/format';
@@ -21,6 +21,7 @@ export function ShopSetupScreen() {
   const { session, businessId, loading, setActiveBusiness } = useAuth();
   const ownerId = businessId ?? session?.user.id ?? '';
   const [mode, setMode] = useState<SetupMode>('create');
+  const [step, setStep] = useState<1 | 2>(1);
   const [name, setName] = useState('');
   const [currency, setCurrency] = useState('USD');
   const [shops, setShops] = useState<JoinableShop[]>([]);
@@ -28,6 +29,8 @@ export function ShopSetupScreen() {
   const [shopsLoading, setShopsLoading] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
+  const [draftReady, setDraftReady] = useState(false);
+  const draftSaveTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const loadShops = useCallback(async () => {
     setShopsLoading(true);
@@ -47,17 +50,38 @@ export function ShopSetupScreen() {
 
   useEffect(() => {
     if (!ownerId) return;
-    void getShopSettings(db, ownerId).then((settings) => {
-      setName(settings.shop_name);
-      setCurrency(currencies.includes(settings.currency) ? settings.currency : 'USD');
-    });
-  }, [db, ownerId]);
+    let active = true;
+    void Promise.all([getShopSettings(db, ownerId), getSetupDraft(db, session?.user.id ?? ownerId)]).then(([settings, draft]) => {
+      if (!active) return;
+      setName(draft?.shop_name ?? settings.shop_name);
+      setCurrency(currencies.includes(draft?.currency ?? settings.currency) ? (draft?.currency ?? settings.currency) : 'USD');
+      setMode(draft?.mode ?? 'create');
+      setSelectedShop(draft?.selected_owner_id ?? null);
+      if (draft?.mode === 'join') void loadShops();
+      setDraftReady(true);
+    }).catch(() => { if (active) setDraftReady(true); });
+    return () => { active = false; };
+  }, [db, loadShops, ownerId, session?.user.id]);
+
+  useEffect(() => {
+    if (!draftReady || !session?.user.id) return;
+    draftSaveTimeout.current = setTimeout(() => {
+      draftSaveTimeout.current = null;
+      void saveSetupDraft(db, session.user.id, { shop_name: name, currency, mode, selected_owner_id: selectedShop });
+    }, 250);
+    return () => {
+      if (draftSaveTimeout.current) clearTimeout(draftSaveTimeout.current);
+      draftSaveTimeout.current = null;
+    };
+  }, [db, draftReady, session?.user.id, name, currency, mode, selectedShop]);
 
   useEffect(() => {
     if (!loading && session && businessId && businessId !== session.user.id) router.replace('/(tabs)');
   }, [loading, session, businessId]);
 
   const finish = async () => {
+    if (draftSaveTimeout.current) clearTimeout(draftSaveTimeout.current);
+    draftSaveTimeout.current = null;
     setError('');
     const cleanName = name.trim();
     if (!cleanName) { setError('Enter your shop name to continue.'); return; }
@@ -70,6 +94,7 @@ export function ShopSetupScreen() {
       await ensurePrimaryLocation(db, session.user.id);
       const ownerName = String(session.user.user_metadata?.full_name ?? session.user.email?.split('@')[0] ?? 'Shop owner');
       await ensureOwnerSeller(db, session.user.id, ownerName);
+      await clearSetupDraft(db, session.user.id);
       router.replace('/(tabs)');
     } catch (value) {
       setError(value instanceof Error ? value.message : 'We could not finish setting up your shop. Please try again.');
@@ -77,10 +102,16 @@ export function ShopSetupScreen() {
   };
 
   const joinShop = async () => {
+    if (draftSaveTimeout.current) clearTimeout(draftSaveTimeout.current);
+    draftSaveTimeout.current = null;
     if (!selectedShop) { setError('Choose a shop to join.'); return; }
+    if (!session) { setError('Sign in before joining a shop.'); return; }
     setError('');
     setBusy(true);
     try {
+      if (await hasLocalShopData(db, session.user.id)) {
+        throw new Error('This account already has shop data on this device. Use a separate staff account so your records stay with your shop.');
+      }
       if (!supabase) throw new Error('Joining a shop needs an internet connection and a configured account.');
       const client = supabase;
       const { data, error: joinError } = await client.rpc('join_business_by_owner', { p_owner_id: selectedShop });
@@ -88,6 +119,7 @@ export function ShopSetupScreen() {
       const joined = (data?.[0] ?? null) as JoinableShop | null;
       if (!joined?.owner_id) throw new Error('The shop is no longer accepting members. Refresh the list and try again.');
       await setActiveBusiness(joined.owner_id);
+      await clearSetupDraft(db, session.user.id);
       router.replace('/(tabs)');
     } catch (value) {
       setError(value instanceof Error ? value.message : 'Could not join this shop. Please try again.');
@@ -95,75 +127,111 @@ export function ShopSetupScreen() {
     } finally { setBusy(false); }
   };
 
+  const continueSetup = () => {
+    setError('');
+    if (mode === 'create' && !name.trim()) {
+      setError('Enter your shop name to continue.');
+      return;
+    }
+    if (mode === 'join' && !selectedShop) {
+      setError('Choose a shop to continue.');
+      return;
+    }
+    setStep(2);
+  };
+
+  const selectedShopDetails = shops.find((shop) => shop.owner_id === selectedShop);
+
   if (loading) return <LoadingScreen label="Preparing your shop setup…" />;
 
-  return <Page title="Set up your shop" subtitle="Create a shop or join one that is accepting team members.">
-    <Card style={styles.heroCard}>
-      <View style={styles.heroIcon}><Store size={24} stroke={colors.deepPurple} /></View>
-      <AppText variant="heading">Welcome to Mama’s Shop</AppText>
-      <AppText color={colors.secondary}>One quick step before you start. Your shop keeps its own stock, sales, and customer records.</AppText>
+  return <Page title="Set up your shop" subtitle="Create a shop or join one that is accepting team members." contentStyle={{ gap: 12, paddingTop: 8, paddingBottom: 12 }}>
+    <View className="gap-2 rounded-2xl border border-line bg-surface p-4">
+    <View className="flex-row items-center justify-between">
+      <AppText variant="small" color={colors.secondary}>Step {step} of 2</AppText>
+      <AppText variant="small" color={colors.deepPurple}>{step === 1 ? (mode === 'create' ? 'Shop details' : 'Choose a shop') : 'Review'}</AppText>
+    </View>
+    <View className="h-1.5 flex-row gap-1 overflow-hidden rounded-full bg-canvas">
+      <View className="flex-1 rounded-full bg-brand" />
+      <View className={`flex-1 rounded-full ${step === 2 ? 'bg-brand' : 'bg-line'}`} />
+    </View>
+    </View>
+    <Card className="flex-row items-center gap-3 p-4">
+      <View className="h-11 w-11 items-center justify-center rounded-2xl bg-brand-tint"><Store size={22} stroke={colors.deepPurple} /></View>
+      <View className="min-w-0 flex-1 gap-0.5">
+        <AppText variant="small" color={colors.deepPurple}>SHOP SETUP</AppText>
+        <AppText variant="heading">Welcome to Mama’s Shop</AppText>
+        <AppText variant="small" color={colors.secondary}>Stock, sales, and customer records in one place.</AppText>
+      </View>
     </Card>
 
-    <View style={styles.modeSwitch}>
+    <View className="flex-row gap-1 rounded-2xl border border-line bg-surface p-1">
       {(['create', 'join'] as const).map((option) => {
         const active = mode === option;
         return <Pressable key={option} accessibilityRole="tab" accessibilityState={{ selected: active }} onPress={() => {
-          setMode(option); setError('');
+          setMode(option); setStep(1); setError('');
           if (option === 'join' && shops.length === 0 && !shopsLoading) void loadShops();
-        }} style={[styles.modeButton, active && styles.modeButtonActive]}>
+        }} className={`min-h-12 flex-1 items-center justify-center rounded-xl ${active ? 'bg-brand-tint' : ''}`}>
           <AppText variant="label" color={active ? colors.deepPurple : colors.secondary}>{option === 'create' ? 'Create a shop' : 'Join a shop'}</AppText>
         </Pressable>;
       })}
     </View>
 
-    {mode === 'create' ? <Card style={styles.formCard}>
-      <View style={styles.sectionHeading}><Building2 size={18} color={colors.purple} /><AppText variant="heading">Your shop details</AppText></View>
-      <Field label="Shop name" placeholder="e.g. Mama’s Corner Shop" value={name} onChangeText={(value) => { setName(value); if (error) setError(''); }} autoCapitalize="words" returnKeyType="done" />
-      <View style={styles.currencyBlock}>
-        <AppText variant="label">Shop currency</AppText>
-        <View style={styles.chips}>{currencies.map((code) => { const selected = currency === code; return <Pressable accessibilityRole="radio" accessibilityState={{ selected }} key={code} onPress={() => setCurrency(code)} style={[styles.chip, selected && styles.chipSelected]}><AppText variant="label" color={selected ? colors.deepPurple : colors.secondary}>{code}</AppText></Pressable>; })}</View>
-        <AppText variant="small" color={colors.secondary}>You can change this later in Settings.</AppText>
+    {mode === 'create' ? <Card className="gap-4 p-4">
+      <View className="flex-row items-center gap-2"><Building2 size={19} color={colors.purple} /><AppText variant="heading">{step === 1 ? 'Your shop details' : 'Review your shop'}</AppText></View>
+      {step === 1 ? <>
+        <Field label="Shop name" placeholder="e.g. Mama’s Corner Shop" value={name} onChangeText={(value) => { setName(value); if (error) setError(''); }} autoCapitalize="words" returnKeyType="done" />
+      </> : <View className="gap-3 rounded-2xl bg-canvas p-4">
+        <View className="flex-row items-center gap-3"><View className="h-11 w-11 items-center justify-center rounded-xl bg-brand-tint"><Store size={20} color={colors.deepPurple} /></View><View className="flex-1 gap-0.5"><AppText variant="small" color={colors.secondary}>SHOP NAME</AppText><AppText variant="label">{name.trim()}</AppText></View></View>
+        <View className="h-px bg-line" />
+        <View className="gap-2">
+          <AppText variant="label">Shop currency</AppText>
+          <View className="flex-row flex-wrap gap-2">{currencies.map((code) => { const selected = currency === code; return <Pressable accessibilityRole="radio" accessibilityState={{ selected }} key={code} onPress={() => setCurrency(code)} className={`min-h-11 items-center justify-center rounded-xl border px-4 ${selected ? 'border-brand bg-brand-tint' : 'border-line bg-surface'}`}><AppText variant="label" color={selected ? colors.deepPurple : colors.secondary}>{code}</AppText></Pressable>; })}</View>
+          <AppText variant="small" color={colors.secondary}>You can change this later in Settings.</AppText>
+        </View>
+        <AppText variant="small" color={colors.secondary}>Your shop dashboard will open after creation.</AppText>
+      </View>}
+      <View className="gap-2 border-t border-line pt-4">
+        {error ? <AppText variant="small" color={colors.danger}>{error}</AppText> : null}
+        {step === 2 ? <SecondaryButton label="Back to shop details" onPress={() => { setStep(1); setError(''); }} /> : null}
+        <PrimaryButton
+          label={busy ? 'Creating your shop…' : step === 1 ? 'Continue to review' : 'Create my shop'}
+          loading={busy}
+          onPress={() => void (step === 1 ? continueSetup() : finish())}
+          icon={step === 1 ? <ChevronRight size={18} stroke="#FFFFFF" /> : <WandSparkles size={17} stroke="#FFFFFF" />}
+          style={{ minHeight: 54, backgroundColor: colors.purple, elevation: 2 }}
+        />
       </View>
-      {error ? <AppText variant="small" color={colors.danger}>{error}</AppText> : null}
-      <PrimaryButton label="Create my shop" loading={busy} onPress={() => void finish()} icon={<WandSparkles size={17} stroke="#FFFFFF" />} />
-    </Card> : <Card style={styles.formCard}>
-      <View style={styles.sectionHeading}><Building2 size={18} color={colors.purple} /><AppText variant="heading">Choose a shop</AppText></View>
+    </Card> : <Card className="gap-4 p-4">
+      <View className="flex-row items-center gap-2"><Building2 size={19} color={colors.purple} /><AppText variant="heading">{step === 1 ? 'Choose a shop' : 'Review your selection'}</AppText></View>
+      {step === 1 ? <>
       <AppText variant="small" color={colors.secondary}>Only shops that are currently accepting team members appear here.</AppText>
-      {shopsLoading ? <LoadingScreen label="Finding shops…" /> : shops.length ? <View style={styles.shopList}>
+      {shopsLoading ? <LoadingScreen label="Finding shops…" /> : shops.length ? <View className="gap-2">
         {shops.map((shop) => {
           const selected = selectedShop === shop.owner_id;
-          return <Pressable key={shop.owner_id} accessibilityRole="radio" accessibilityState={{ selected }} onPress={() => { setSelectedShop(shop.owner_id); setError(''); }} style={[styles.shopRow, selected && styles.shopRowSelected]}>
-            <View style={[styles.shopIcon, selected && styles.shopIconSelected]}><Store size={18} color={selected ? colors.deepPurple : colors.secondary} /></View>
-            <View style={styles.shopName}><AppText variant="label">{shop.business_name}</AppText><AppText variant="small" color={colors.secondary}>Invited team shop</AppText></View>
+          return <Pressable key={shop.owner_id} accessibilityRole="radio" accessibilityState={{ selected }} onPress={() => { setSelectedShop(shop.owner_id); setError(''); }} className={`min-h-16 flex-row items-center gap-3 rounded-2xl border p-3 ${selected ? 'border-brand bg-brand-tint' : 'border-line bg-surface'}`}>
+            <View className={`h-10 w-10 items-center justify-center rounded-xl ${selected ? 'bg-surface' : 'bg-canvas'}`}><Store size={18} color={selected ? colors.deepPurple : colors.secondary} /></View>
+            <View className="min-w-0 flex-1 gap-0.5"><AppText variant="label">{shop.business_name}</AppText><AppText variant="small" color={colors.secondary}>Open to team members</AppText></View>
             {selected ? <Check size={19} color={colors.purple} /> : <ChevronRight size={18} color={colors.secondary} />}
           </Pressable>;
         })}
-      </View> : <View style={styles.emptyState}><AppText variant="label">No shops available right now</AppText><AppText variant="small" color={colors.secondary}>Ask the shop owner to enable team invitations, then refresh.</AppText></View>}
-      {error ? <AppText variant="small" color={colors.danger}>{error}</AppText> : null}
-      <PrimaryButton label="Join selected shop" loading={busy} disabled={!selectedShop || shopsLoading} onPress={() => void joinShop()} icon={<Check size={17} stroke="#FFFFFF" />} />
-      <Pressable onPress={() => void loadShops()} disabled={shopsLoading || busy} style={styles.refresh}><AppText variant="label" color={colors.purple}>Refresh shop list</AppText></Pressable>
+      </View> : <View className="items-center gap-2 rounded-2xl bg-canvas p-5"><View className="mb-1 h-12 w-12 items-center justify-center rounded-2xl bg-brand-tint"><Store size={22} color={colors.purple} /></View><AppText variant="label">No shops available right now</AppText><AppText variant="small" color={colors.secondary} style={{ textAlign: 'center' }}>Ask the shop owner to enable team invitations, then refresh.</AppText></View>}
+      <Pressable onPress={() => void loadShops()} disabled={shopsLoading || busy} className="min-h-10 items-center justify-center"><AppText variant="label" color={colors.purple}>Refresh shop list</AppText></Pressable>
+      </> : <View className="gap-3 rounded-2xl bg-canvas p-4">
+        <View className="flex-row items-center gap-3"><View className="h-11 w-11 items-center justify-center rounded-xl bg-brand-tint"><Store size={20} color={colors.deepPurple} /></View><View className="flex-1 gap-0.5"><AppText variant="small" color={colors.secondary}>SELECTED SHOP</AppText><AppText variant="label">{selectedShopDetails?.business_name ?? 'Selected shop'}</AppText></View><Check size={20} color={colors.success} /></View>
+        <AppText variant="small" color={colors.secondary}>You’ll open this shop’s dashboard after joining.</AppText>
+      </View>}
+      <View className="gap-2 border-t border-line pt-4">
+        {error ? <AppText variant="small" color={colors.danger}>{error}</AppText> : null}
+        {step === 2 ? <SecondaryButton label="Back to shop list" onPress={() => { setStep(1); setError(''); }} /> : null}
+        <PrimaryButton
+          label={busy ? 'Joining shop…' : step === 1 ? 'Continue to review' : 'Join selected shop'}
+          loading={busy}
+          disabled={step === 1 ? (!selectedShop || shopsLoading) : !selectedShop}
+          onPress={() => void (step === 1 ? continueSetup() : joinShop())}
+          icon={step === 1 ? <ChevronRight size={18} stroke="#FFFFFF" /> : <Check size={17} stroke="#FFFFFF" />}
+          style={{ minHeight: 54, backgroundColor: colors.purple, elevation: 2 }}
+        />
+      </View>
     </Card>}
   </Page>;
 }
-
-const styles = StyleSheet.create({
-  heroCard: { gap: 10, alignItems: 'flex-start', padding: 16 },
-  heroIcon: { width: 44, height: 44, borderRadius: 15, backgroundColor: colors.lavenderTint, alignItems: 'center', justifyContent: 'center' },
-  modeSwitch: { flexDirection: 'row', padding: 4, borderWidth: 1, borderColor: colors.border, borderRadius: 14, backgroundColor: colors.surface, gap: 4 },
-  modeButton: { flex: 1, minHeight: 42, alignItems: 'center', justifyContent: 'center', borderRadius: 10 },
-  modeButtonActive: { backgroundColor: colors.lavenderTint },
-  formCard: { gap: 14, padding: 16 },
-  sectionHeading: { flexDirection: 'row', alignItems: 'center', gap: 9 },
-  currencyBlock: { gap: 8 },
-  chips: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
-  chip: { minHeight: 38, paddingHorizontal: 15, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: colors.border, borderRadius: 12, backgroundColor: colors.surface },
-  chipSelected: { borderColor: colors.purple, backgroundColor: colors.lavenderTint },
-  shopList: { gap: 8 },
-  shopRow: { minHeight: 66, flexDirection: 'row', alignItems: 'center', gap: 12, padding: 11, borderWidth: 1, borderColor: colors.border, borderRadius: 14, backgroundColor: colors.surface },
-  shopRowSelected: { borderColor: colors.purple, backgroundColor: colors.lavenderTint },
-  shopIcon: { width: 40, height: 40, alignItems: 'center', justifyContent: 'center', borderRadius: 12, backgroundColor: colors.background },
-  shopIconSelected: { backgroundColor: colors.surface },
-  shopName: { flex: 1, gap: 3 },
-  emptyState: { gap: 6, padding: 16, alignItems: 'center', borderRadius: 14, backgroundColor: colors.background },
-  refresh: { minHeight: 36, alignItems: 'center', justifyContent: 'center' },
-});

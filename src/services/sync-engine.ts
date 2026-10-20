@@ -147,6 +147,10 @@ async function pullRemoteEvents(db: SQLiteDatabase, ownerId: string) {
     for (const event of events) {
       const applied = await db.getFirstAsync('SELECT idempotency_key FROM sync_applied_events WHERE idempotency_key = ? AND owner_id = ?', event.idempotency_key, ownerId);
       if (applied) {
+        // Old installs may already have an idempotency ledger but no pull
+        // cursor. Persist progress for skipped events to avoid replaying the
+        // same cloud history on every sync.
+        await db.runAsync('INSERT INTO sync_metadata (owner_id, last_pulled_at, last_pulled_key) VALUES (?, ?, ?) ON CONFLICT(owner_id) DO UPDATE SET last_pulled_at = excluded.last_pulled_at, last_pulled_key = excluded.last_pulled_key', ownerId, event.received_at, event.idempotency_key);
         receivedAt = event.received_at;
         cursorKey = event.idempotency_key;
         continue;

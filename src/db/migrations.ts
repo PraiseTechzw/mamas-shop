@@ -1,6 +1,6 @@
 import type { SQLiteDatabase } from 'expo-sqlite';
 
-export const DATABASE_VERSION = 9;
+export const DATABASE_VERSION = 10;
 
 export async function migrateDbIfNeeded(db: SQLiteDatabase) {
   const row = await db.getFirstAsync<{ user_version: number }>('PRAGMA user_version');
@@ -144,6 +144,19 @@ export async function migrateDbIfNeeded(db: SQLiteDatabase) {
       CREATE INDEX IF NOT EXISTS change_owed_customer_idx ON change_owed(customer_id, status);
     `);
     version = 9;
+  }
+  if (version < 10) {
+    await db.execAsync(`
+      CREATE TABLE IF NOT EXISTS setup_drafts (
+        user_id TEXT PRIMARY KEY NOT NULL,
+        shop_name TEXT NOT NULL DEFAULT '',
+        currency TEXT NOT NULL DEFAULT 'USD',
+        mode TEXT NOT NULL DEFAULT 'create' CHECK(mode IN ('create', 'join')),
+        selected_owner_id TEXT,
+        updated_at TEXT NOT NULL
+      );
+    `);
+    version = 10;
   }
   await db.execAsync('PRAGMA user_version = ' + Math.min(version, DATABASE_VERSION));
 }

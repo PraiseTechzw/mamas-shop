@@ -44,7 +44,7 @@ alter table public.business_invites force row level security;
 drop policy if exists "Users can view their business memberships" on public.business_members;
 create policy "Users can view their business memberships"
   on public.business_members for select to authenticated
-  using (auth.uid() = owner_id or auth.uid() = user_id);
+  using ((select auth.uid()) = owner_id or (select auth.uid()) = user_id);
 
 revoke all on public.business_members from anon, authenticated;
 grant select on public.business_members to authenticated;
@@ -55,7 +55,7 @@ returns uuid
 language sql
 stable
 security definer
-set search_path = public
+set search_path = ''
 as $$
   select coalesce(
     (select bm.owner_id from public.business_members bm where bm.user_id = auth.uid()),
@@ -73,7 +73,7 @@ create or replace function public.create_business_invite(
 returns table (invite_id uuid, expires_at timestamptz)
 language plpgsql
 security definer
-set search_path = public, extensions
+set search_path = ''
 as $$
 declare
   v_uid uuid := auth.uid();
@@ -106,7 +106,7 @@ create or replace function public.join_business_with_code(p_code text)
 returns table (owner_id uuid, business_name text)
 language plpgsql
 security definer
-set search_path = public, extensions
+set search_path = ''
 as $$
 declare
   v_uid uuid := auth.uid();
@@ -160,10 +160,10 @@ drop policy if exists "Users can append their own sync events" on public.sync_ev
 create policy "Business members can append sync events"
   on public.sync_events for insert to authenticated
   with check (
-    auth.uid() = actor_id and (
-      auth.uid() = owner_id or exists (
+    (select auth.uid()) = actor_id and (
+      (select auth.uid()) = owner_id or exists (
       select 1 from public.business_members bm
-      where bm.owner_id = sync_events.owner_id and bm.user_id = auth.uid()
+      where bm.owner_id = sync_events.owner_id and bm.user_id = (select auth.uid())
       )
     )
   );
@@ -172,9 +172,9 @@ drop policy if exists "Users can read their own sync events" on public.sync_even
 create policy "Business members can read sync events"
   on public.sync_events for select to authenticated
   using (
-    auth.uid() = owner_id
+    (select auth.uid()) = owner_id
     or exists (
       select 1 from public.business_members bm
-      where bm.owner_id = sync_events.owner_id and bm.user_id = auth.uid()
+      where bm.owner_id = sync_events.owner_id and bm.user_id = (select auth.uid())
     )
   );

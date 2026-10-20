@@ -163,9 +163,11 @@ function ShopSettingsEditor({ section }: { section: "business" | "currency" }) {
   const db = useSQLiteContext();
   const { session, businessId } = useAuth();
   const owner = businessId ?? session?.user.id ?? "";
+  const business = section === "business";
   const [name, setName] = useState("");
   const [currency, setCurrency] = useState("USD");
   const [alerts, setAlerts] = useState(true);
+  const [joinable, setJoinable] = useState(false);
   const [busy, setBusy] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -192,16 +194,29 @@ function ShopSettingsEditor({ section }: { section: "business" | "currency" }) {
       .finally(() => {
         if (active) setLoading(false);
       });
+    if (business && session?.user.id === owner && supabase) {
+      void supabase.rpc("get_my_business_joinable").then(({ data }) => {
+        if (active) setJoinable(data === true);
+      });
+    }
     return () => {
       active = false;
     };
-  }, [db, owner]);
+  }, [db, owner, business, session?.user.id]);
 
   const save = async () => {
     setBusy(true);
     setError("");
     setMessage("");
     try {
+      if (business && session?.user.id === owner) {
+        if (!supabase) throw new Error("Connect to the internet to update who can find and join your shop.");
+        const { error: accessError } = await supabase.rpc("set_business_joinable", {
+          p_enabled: joinable,
+          p_business_name: name.trim(),
+        });
+        if (accessError) throw accessError;
+      }
       await saveShopSettings(db, owner, name, currency, alerts);
       setAppCurrency(currency);
       setMessage("Your shop preferences have been updated.");
@@ -216,7 +231,6 @@ function ShopSettingsEditor({ section }: { section: "business" | "currency" }) {
     }
   };
 
-  const business = section === "business";
   return (
     <Page
       title={business ? "Business Details" : "Currency & Receipt"}
@@ -245,6 +259,28 @@ function ShopSettingsEditor({ section }: { section: "business" | "currency" }) {
                 }}
                 placeholder="Mama's Shop"
               />
+              {session?.user.id === owner ? (
+                <Pressable
+                  onPress={() => {
+                    setJoinable((value) => !value);
+                    setMessage("");
+                  }}
+                  style={styles.toggleRow}
+                  accessibilityRole="switch"
+                  accessibilityState={{ checked: joinable }}
+                >
+                  <View style={{ flex: 1, gap: 3 }}>
+                    <AppText variant="label">Let people find and join this shop</AppText>
+                    <AppText variant="small" color={colors.secondary}>
+                      Only your shop name is listed. Shop records stay private until someone joins.
+                    </AppText>
+                  </View>
+                  <StatusBadge
+                    label={joinable ? "Open" : "Private"}
+                    tone={joinable ? "green" : "purple"}
+                  />
+                </Pressable>
+              ) : null}
               <Pressable
                 onPress={() => {
                   setAlerts((value) => !value);

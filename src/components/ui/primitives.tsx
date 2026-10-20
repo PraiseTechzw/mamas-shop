@@ -1,6 +1,6 @@
 import { useState, type PropsWithChildren, type ReactNode, type Ref } from 'react';
 import { ActivityIndicator, Animated, Pressable, ScrollView, StyleSheet, Text, TextInput, View, type TextInputProps, type TextStyle, type ViewStyle } from 'react-native';
-import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { ChevronLeft } from 'lucide-react-native';
 import { router } from 'expo-router';
 import { colors, radius, spacing } from '@/constants/theme';
@@ -11,18 +11,17 @@ export function AppText({ children, variant = 'body', color, style, numberOfLine
   return <Text numberOfLines={numberOfLines} style={[{ color: color ?? colors.text, fontFamily, fontSize, lineHeight: variant === 'title' ? 34 : undefined }, style]}>{children}</Text>;
 }
 
-export function Page({ children, title, subtitle, back = false, right, scroll = true, contentStyle }: PropsWithChildren<{ title?: string; subtitle?: string; back?: boolean; right?: ReactNode; scroll?: boolean; contentStyle?: ViewStyle }>) {
-  const insets = useSafeAreaInsets();
+export function Page({ children, title, subtitle, back = false, right, scroll = true, contentStyle, footer }: PropsWithChildren<{ title?: string; subtitle?: string; back?: boolean; right?: ReactNode; scroll?: boolean; contentStyle?: ViewStyle; footer?: ReactNode }>) {
   const content = <View style={[styles.content, contentStyle]}>{title ? <View style={styles.headingRow}>{back ? <Pressable onPress={() => router.back()} hitSlop={12} style={styles.back}><ChevronLeft stroke={colors.deepPurple} size={22} /></Pressable> : null}<View style={styles.headingText}><AppText variant="title">{title}</AppText>{subtitle ? <AppText color={colors.secondary} style={{ marginTop: 3 }}>{subtitle}</AppText> : null}</View>{right}</View> : null}{children}</View>;
-  return <SafeAreaView className="flex-1 bg-canvas" edges={['top']}><View className="flex-1 bg-canvas">{scroll ? <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={{ flexGrow: 1, paddingBottom: Math.max(30, insets.bottom + 16) }}>{content}</ScrollView> : content}</View></SafeAreaView>;
+  return <SafeAreaView className="flex-1 bg-canvas" edges={['top', 'bottom']}><View className="flex-1 bg-canvas">{scroll ? <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={{ flexGrow: 1, paddingBottom: 24 }}>{content}</ScrollView> : content}{footer ? <View className="border-t border-line bg-surface px-4 pt-2" style={{ paddingBottom: 8 }}>{footer}</View> : null}</View></SafeAreaView>;
 }
 
-export function Card({ children, style }: PropsWithChildren<{ style?: ViewStyle }>) {
-  return <View style={[styles.card, style]}>{children}</View>;
+export function Card({ children, style, className }: PropsWithChildren<{ style?: ViewStyle; className?: string }>) {
+  return <View className={`rounded-[18px] border border-line bg-surface p-4 ${className ?? ''}`} style={style}>{children}</View>;
 }
 
 export function PrimaryButton({ label, onPress, disabled, loading, icon, style }: { label: string; onPress: () => void; disabled?: boolean; loading?: boolean; icon?: ReactNode; style?: ViewStyle }) {
-  return <Pressable accessibilityRole="button" onPress={onPress} disabled={disabled || loading} style={({ pressed }) => [styles.primaryButton, style, (disabled || loading) && styles.disabled, pressed && !disabled && { opacity: 0.88 }]}><>{loading ? <ActivityIndicator color="#FFFFFF" size="small" /> : icon}{!loading ? <AppText variant="label" color="#FFFFFF">{label}</AppText> : null}</></Pressable>;
+  return <Pressable accessibilityRole="button" accessibilityState={{ disabled: disabled || loading, busy: loading }} onPress={onPress} disabled={disabled || loading} style={({ pressed }) => [styles.primaryButton, style, (disabled || loading) && styles.disabled, pressed && !disabled && !loading && { opacity: 0.88 }]}>{loading ? <ActivityIndicator color="#FFFFFF" size="small" /> : icon}<AppText variant="label" color="#FFFFFF">{label}</AppText></Pressable>;
 }
 
 export function SecondaryButton({ label, onPress, style, icon }: { label: string; onPress: () => void; style?: ViewStyle; icon?: ReactNode }) {
