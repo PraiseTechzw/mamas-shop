@@ -59,6 +59,12 @@ export function SettingsScreen() {
           onPress={() => router.push("/settings/business")}
         />
         <SettingsRow
+          title="Shop Team"
+          subtitle="See the people connected to this shop"
+          icon={Users}
+          onPress={() => router.push("/settings/team")}
+        />
+        <SettingsRow
           title="Currency & Receipt"
           subtitle="Set your currency and preview receipt totals"
           icon={Banknote}
@@ -492,12 +498,12 @@ export function HelpAndSupportScreen() {
       <View className="gap-4">
         <View className="overflow-hidden rounded-3xl bg-brand px-5 py-5">
           <View className="mb-4 h-11 w-11 items-center justify-center rounded-2xl bg-white/15">
-            <CircleHelp size={23} color=colors.surface />
+            <CircleHelp size={23} color={colors.surface} />
           </View>
-          <AppText variant="heading" color=colors.surface>
+          <AppText variant="heading" color={colors.surface}>
             How can we help?
           </AppText>
-          <AppText color=colors.lavenderTint style={{ marginTop: 5, lineHeight: 21 }}>
+          <AppText color={colors.lavenderTint} style={{ marginTop: 5, lineHeight: 21 }}>
             Find quick guidance for everyday shop tasks and offline use.
           </AppText>
           <Pressable

@@ -184,8 +184,8 @@ async function pullRemoteEvents(db: SQLiteDatabase, ownerId: string) {
   // A sale or stock event can arrive before the product, customer, seller, or
   // location it references. Retry deferred events after the full pull so later
   // events in this batch can satisfy those dependencies automatically.
-  await retrySyncConflicts(db, ownerId);
-  return downloaded;
+  const recovered = await retrySyncConflicts(db, ownerId);
+  return downloaded + recovered;
 }
 
 export async function retrySyncConflicts(db: SQLiteDatabase, ownerId: string) {

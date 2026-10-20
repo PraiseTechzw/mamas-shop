@@ -96,7 +96,7 @@ function saleCategory(product: Product) {
   return "Groceries";
 }
 
-type HistoryDateFilter = "TODAY" | "7_DAYS" | "30_DAYS" | "CUSTOM";
+type HistoryDateFilter = "TODAY" | "7_DAYS" | "30_DAYS" | "ALL_TIME" | "CUSTOM";
 type DateRange = { start: Date; end: Date };
 
 function startOfLocalDay(date: Date) {
@@ -119,6 +119,9 @@ function getHistoryDateBounds(
       start: startOfLocalDay(customRange.start),
       endExclusive: addLocalDays(startOfLocalDay(customRange.end), 1),
     };
+  }
+  if (filter === "ALL_TIME") {
+    return { start: new Date(0), endExclusive: addLocalDays(today, 1) };
   }
   const days = filter === "TODAY" ? 1 : filter === "7_DAYS" ? 7 : 30;
   return {
@@ -634,75 +637,69 @@ export function SalesScreen() {
           />
         ) : (
           /* Product list */
-          <View className="overflow-hidden rounded-2xl border border-line bg-surface">
-            {visibleRows.map((product, idx) => {
+          <View className="flex-row flex-wrap justify-between gap-y-3">
+            {visibleRows.map((product) => {
               const inCart = lines.find((l) => l.productId === product.id);
-              const isLast = idx === visibleRows.length - 1;
               return (
                 <Pressable
                   key={product.id}
                   accessibilityRole="button"
                   accessibilityLabel={`Add ${product.name}, ${formatMoney(product.price_cents)}, ${product.stock_quantity} ${product.unit} in stock`}
                   onPress={() => addProduct(product)}
-                  className={`flex-row items-center gap-3 px-3 py-2.5 active:bg-brand-tint/50 ${isLast ? "" : "border-b border-line"}`}
+                  className={`w-[48.5%] rounded-2xl border bg-surface p-2.5 active:opacity-80 ${inCart ? "border-brand" : "border-line"}`}
                 >
                   {/* Product image */}
-                  <View className="h-12 w-12 items-center justify-center overflow-hidden rounded-xl bg-canvas">
+                  <View className="relative h-[126px] w-full items-center justify-center overflow-hidden rounded-xl bg-surface">
                     {imageSource(product) ? (
                       <Image
                         source={imageSource(product)!}
                         resizeMode="contain"
-                        className="h-11 w-11"
+                        className="h-full w-full"
                         accessibilityLabel={`${product.name} photo`}
                       />
                     ) : (
-                      <Package size={22} color={colors.deepPurple} />
+                      <View className="h-20 w-20 items-center justify-center rounded-2xl bg-brand-tint">
+                        <Package size={34} color={colors.deepPurple} />
+                      </View>
                     )}
+                    {inCart ? (
+                      <View className="absolute right-2 top-2 h-8 min-w-8 items-center justify-center rounded-full bg-brand px-2">
+                        <AppText variant="small" color={colors.surface} style={{ fontSize: 12, fontWeight: "700" }}>
+                          {inCart.quantity}
+                        </AppText>
+                      </View>
+                    ) : null}
                   </View>
 
-                  {/* Name + price */}
-                  <View className="min-w-0 flex-1 gap-0.5">
+                  {/* Product details */}
+                  <View className="min-w-0 gap-1 px-0.5 pb-0.5 pt-2">
                     <AppText
                       variant="label"
-                      numberOfLines={1}
-                      style={{ fontSize: 13 }}
+                      numberOfLines={2}
+                      style={{ fontSize: 13, lineHeight: 17, fontWeight: "700", minHeight: 34 }}
                     >
                       {product.name}
                     </AppText>
                     <AppText
                       variant="small"
                       color={colors.purple}
-                      style={{ fontSize: 12 }}
+                      style={{ fontSize: 14, fontWeight: "700" }}
                     >
                       {formatMoney(product.price_cents)}
                     </AppText>
-                  </View>
-
-                  {/* Stock */}
-                  <AppText
-                    variant="small"
-                    color={colors.secondary}
-                    style={{ fontSize: 10 }}
-                    numberOfLines={1}
-                  >
-                    {product.stock_quantity} {product.unit}
-                  </AppText>
-
-                  {/* Add / qty badge */}
-                  <View
-                    className={`h-9 w-9 items-center justify-center rounded-full ${inCart ? "bg-brand-deep" : "bg-brand"}`}
-                  >
-                    {inCart ? (
+                    <View className="mt-1 flex-row items-center justify-between gap-1">
                       <AppText
-                        variant="label"
-                        color={colors.surface}
-                        style={{ fontSize: 12 }}
+                        variant="small"
+                        color={product.stock_quantity > 0 ? colors.success : colors.danger}
+                        style={{ fontSize: 10, fontWeight: "600", flexShrink: 1 }}
+                        numberOfLines={1}
                       >
-                        {inCart.quantity}
+                        {product.stock_quantity} {product.unit} left
                       </AppText>
-                    ) : (
-                      <Plus size={17} color={colors.surface} />
-                    )}
+                      <View className="h-8 w-8 shrink-0 items-center justify-center rounded-full bg-brand">
+                        <Plus size={16} color={colors.surface} />
+                      </View>
+                    </View>
                   </View>
                 </Pressable>
               );
@@ -991,14 +988,14 @@ export function CheckoutScreen() {
                 className={`flex-row items-center gap-2.5 py-2 ${isLast ? "" : "border-b border-line"}`}
               >
                 {/* Thumb */}
-                <View className="h-12 w-12 items-center justify-center overflow-hidden rounded-xl bg-canvas">
+          <View className="h-12 w-12 items-center justify-center overflow-hidden rounded-xl bg-surface">
                   {imageSource({ name: line.name, image_uri: null }) ? (
                     <Image
                       source={
                         imageSource({ name: line.name, image_uri: null })!
                       }
                       resizeMode="contain"
-                      className="h-11 w-11"
+                      className="h-11 w-11 scale-[1.12]"
                       accessibilityLabel={`${line.name} image`}
                     />
                   ) : (
@@ -1367,13 +1364,13 @@ export function CheckoutScreen() {
           className={`min-h-[54px] flex-row items-center justify-center gap-2.5 rounded-2xl ${canComplete ? "bg-brand active:opacity-85" : "bg-brand/50"}`}
         >
           {busy ? (
-            <ActivityIndicator size="small" color=colors.surface />
+            <ActivityIndicator size="small" color={colors.surface} />
           ) : (
-            <Check size={19} color=colors.surface />
+            <Check size={19} color={colors.surface} />
           )}
           <AppText
             variant="label"
-            color=colors.surface
+            color={colors.surface}
             numberOfLines={1}
             style={{ fontSize: 15 }}
           >
@@ -1398,7 +1395,7 @@ export function CheckoutScreen() {
 export function SalesHistoryScreen() {
   const db = useSQLiteContext();
   const { session, businessId } = useAuth();
-  const { revision } = useSyncStatus();
+  const { revision, syncNow } = useSyncStatus();
   const ownerId = businessId ?? session?.user.id ?? "";
 
   const [sales, setSales] = useState<SaleSummary[]>([]);
@@ -1429,6 +1426,7 @@ export function SalesHistoryScreen() {
     { key: "TODAY", label: "Today" },
     { key: "7_DAYS", label: "7 days" },
     { key: "30_DAYS", label: "30 days" },
+    { key: "ALL_TIME", label: "All time" },
   ] as const;
 
   const visible = useMemo(
@@ -1501,6 +1499,9 @@ export function SalesHistoryScreen() {
     setRefreshing(true);
     setLoadError("");
     try {
+      // Pull remote shop events before rereading SQLite so this gesture also
+      // refreshes sales recorded on another connected device.
+      await syncNow();
       setSales(
         await listSalesBetween(
           db,

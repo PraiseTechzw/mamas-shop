@@ -2,6 +2,8 @@ import type { ImageSourcePropType } from 'react-native';
 import type { Product } from '@/db/schema';
 
 const productImages = [
+ { match: 'eggs', image: require('@/assets/images/products/eggs.png') },
+ { match: 'egg', image: require('@/assets/images/products/eggs.png') },
  { match: 'coca-cola', image: require('@/assets/images/products/coke.png') },
  { match: 'coke', image: require('@/assets/images/products/coke.png') },
  { match: 'mirinda orange', image: require('@/assets/images/products/mirinda-orange.png') },

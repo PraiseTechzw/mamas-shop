@@ -10,6 +10,7 @@ import { getSyncRetryDelay, syncOutbox, type SyncResult } from '@/services/sync-
 import { AppText } from '@/components/ui/primitives';
 import { formatDateTime } from '@/lib/format';
 import { subscribeSyncRequested } from '@/services/sync-events';
+import { supabase } from '@/lib/supabase';
 
 type SyncContextValue = {
   connection: ConnectionState;
@@ -45,6 +46,7 @@ export function SyncProvider({ children }: PropsWithChildren) {
   const [lastSyncedAt, setLastSyncedAt] = useState<string | null>(null);
   const [unavailable, setUnavailable] = useState<SyncResult['unavailable']>();
   const running = useRef(false);
+  const rerunRequested = useRef(false);
 
   const refreshSummary = useCallback(async () => {
     if (!ownerId) { setPending(0); setFailed(0); setConflicts(0); setLastSyncedAt(null); return; }
@@ -59,7 +61,8 @@ export function SyncProvider({ children }: PropsWithChildren) {
   }, [db, ownerId]);
 
   const syncNow = useCallback(async (force = false) => {
-    if (running.current || connection !== 'online' || !ownerId) return;
+    if (connection !== 'online' || !ownerId) return;
+    if (running.current) { rerunRequested.current = true; return; }
     running.current = true;
     setSyncing(true);
     try {
@@ -72,6 +75,10 @@ export function SyncProvider({ children }: PropsWithChildren) {
     } finally {
       running.current = false;
       setSyncing(false);
+      if (rerunRequested.current && connection === 'online' && ownerId) {
+        rerunRequested.current = false;
+        setTimeout(() => { void syncNow(); }, 0);
+      }
     }
   }, [connection, db, ownerId, refreshSummary]);
 
@@ -82,7 +89,28 @@ export function SyncProvider({ children }: PropsWithChildren) {
   }, []);
 
   useEffect(() => subscribeToConnection(setConnection), []);
-  useEffect(() => subscribeSyncRequested(() => { void refreshSummary(); void syncNow(); }), [refreshSummary, syncNow]);
+  useEffect(() => {
+    const client = supabase;
+    if (!client || !ownerId) return;
+    const channel = client
+      .channel(`shop-changes:${ownerId}`)
+      .on('postgres_changes', {
+        event: 'INSERT',
+        schema: 'public',
+        table: 'sync_events',
+        filter: `owner_id=eq.${ownerId}`,
+      }, () => { void syncNow(); })
+      .subscribe();
+    return () => { void client.removeChannel(channel); };
+  }, [ownerId, syncNow]);
+  useEffect(() => subscribeSyncRequested(() => {
+    // Every local business write is queued through enqueueChange(), which
+    // publishes this event after the SQLite transaction has had time to commit.
+    // Bump the shared revision so mounted screens refresh from SQLite too.
+    setRevision((current) => current + 1);
+    void refreshSummary();
+    void syncNow();
+  }), [refreshSummary, syncNow]);
   // eslint-disable-next-line react-hooks/set-state-in-effect -- load persisted queue counts when the signed-in account changes.
   useEffect(() => { void refreshSummary(); }, [refreshSummary]);
   useEffect(() => { if (connection === 'online') void syncNow(); }, [connection, syncNow]);
