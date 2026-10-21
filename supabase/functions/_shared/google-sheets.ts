@@ -1,5 +1,6 @@
 const SHEETS_API = 'https://sheets.googleapis.com/v4';
 const DRIVE_API = 'https://www.googleapis.com/drive/v3';
+const DRIVE_UPLOAD_API = 'https://www.googleapis.com/upload/drive/v3';
 
 export type GoogleEvent = {
   idempotency_key: string;
@@ -40,7 +41,7 @@ export async function createSpreadsheet(accessToken: string, shopName: string, l
   const end = new TextEncoder().encode(`\r\n--${boundary}--`);
   const multipart = new Uint8Array(start.length + logoBytes.length + end.length);
   multipart.set(start); multipart.set(logoBytes, start.length); multipart.set(end, start.length + logoBytes.length);
-  const logoFile = await googleRequest(`${DRIVE_API}/files?uploadType=multipart&fields=id`, accessToken, {
+  const logoFile = await googleRequest(`${DRIVE_UPLOAD_API}/files?uploadType=multipart&fields=id`, accessToken, {
     method: 'POST', headers: { 'Content-Type': `multipart/related; boundary=${boundary}` }, body: multipart,
   });
   const logoId = logoFile.id as string;

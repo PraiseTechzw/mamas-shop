@@ -97,7 +97,20 @@ export function GoogleSheetsReportsScreen() {
         if (syncResult.error) throw syncResult.error;
         setMessage('Your historical records are now in Google Sheets. New cloud-synced activity will be added automatically.');
         await load();
-      } else if (result.type === 'cancel' || result.type === 'dismiss') setMessage('Google connection was cancelled.');
+      } else if (result.type === 'cancel' || result.type === 'dismiss') {
+        const { data: currentStatus, error: statusError } = await supabase.functions.invoke('google-sheets', { body: { action: 'status', ownerId } });
+        if (statusError) throw statusError;
+        if (currentStatus?.connected) {
+          setStatus(currentStatus as ConnectionStatus);
+          setMessage('Google connected. Uploading your shop history…');
+          const syncResult = await supabase.functions.invoke('google-sheets', { body: { action: 'sync', ownerId } });
+          if (syncResult.error) throw syncResult.error;
+          setMessage('Google connected. Your spreadsheet has been updated with your shop history.');
+          await load();
+        } else {
+          setMessage('Google did not return to Expo Go. If you approved access, deploy the updated Google Sheets functions and migration 202610210008, then restart Expo Go.');
+        }
+      }
     } catch (error) {
       setMessage(await getFunctionErrorMessage(error));
     } finally { setBusy(false); }

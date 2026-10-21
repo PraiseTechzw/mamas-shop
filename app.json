@@ -16,7 +16,8 @@
         "foregroundImage": "./assets/images/brand/android-foreground.png",
         "monochromeImage": "./assets/images/brand/android-monochrome.png"
       },
-      "predictiveBackGestureEnabled": true
+      "predictiveBackGestureEnabled": true,
+      "package": "com.praisetechzw04.mamasshop"
     },
     "web": {
       "bundler": "metro",
@@ -50,6 +51,12 @@
     "experiments": {
       "typedRoutes": true,
       "reactCompiler": true
+    },
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "6fd38bd8-51df-4d8e-8dc7-b562de7db2bd"
+      }
     }
   }
 }
