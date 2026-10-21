@@ -68,9 +68,25 @@ export function GoogleSheetsReportsScreen() {
     try {
       const { data, error } = await supabase.functions.invoke('google-sheets', { body: { action: 'connect', ownerId, shopName } });
       if (error) throw error;
-      const result = await WebBrowser.openAuthSessionAsync(data.authorizationUrl, 'mamasshop://settings/reports');
-      if (result.type === 'success') {
-        const callbackUrl = result.url ? new URL(result.url) : null;
+      const redirectUrl = 'mamasshop://settings/reports';
+      let deepLinkUrl: string | undefined;
+      // On Android, the OAuth callback opens the app through this deep link.
+      // Expo's Custom Tab stays visible unless we dismiss it when that link arrives.
+      const subscription = Linking.addEventListener('url', ({ url }) => {
+        if (url.startsWith(redirectUrl)) {
+          deepLinkUrl = url;
+          void WebBrowser.dismissBrowser();
+        }
+      });
+      let result: Awaited<ReturnType<typeof WebBrowser.openAuthSessionAsync>>;
+      try {
+        result = await WebBrowser.openAuthSessionAsync(data.authorizationUrl, redirectUrl);
+      } finally {
+        subscription.remove();
+      }
+      const returnedUrl = result.type === 'success' ? result.url : deepLinkUrl;
+      if (returnedUrl) {
+        const callbackUrl = new URL(returnedUrl);
         const connected = callbackUrl?.searchParams.get('connected');
         const callbackError = callbackUrl?.searchParams.get('error');
         if (connected !== '1') throw new Error(callbackError ?? 'Google sign-in did not complete. Start a new connection and finish the Google approval step.');
