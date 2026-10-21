@@ -3,6 +3,7 @@ import { colors } from '@/constants/theme';
 import { getShopSettings } from '@/db/repositories/settings';
 import { useAuth } from '@/features/auth/auth-context';
 import { supabase } from '@/lib/supabase';
+import * as ExpoLinking from 'expo-linking';
 import * as WebBrowser from 'expo-web-browser';
 import { useLocalSearchParams } from 'expo-router';
 import { BarChart3, CloudUpload, ExternalLink, FileSpreadsheet, History, Package, RefreshCw, ShieldCheck, ShoppingBag, Users } from 'lucide-react-native';
@@ -66,9 +67,9 @@ export function GoogleSheetsReportsScreen() {
     if (!supabase) { setMessage('Cloud sync is not configured for this app yet.'); return; }
     setBusy(true); setMessage('');
     try {
-      const { data, error } = await supabase.functions.invoke('google-sheets', { body: { action: 'connect', ownerId, shopName } });
+      const redirectUrl = ExpoLinking.createURL('settings/reports');
+      const { data, error } = await supabase.functions.invoke('google-sheets', { body: { action: 'connect', ownerId, shopName, redirectUrl } });
       if (error) throw error;
-      const redirectUrl = 'mamasshop://settings/reports';
       let deepLinkUrl: string | undefined;
       // On Android, the OAuth callback opens the app through this deep link.
       // Expo's Custom Tab stays visible unless we dismiss it when that link arrives.

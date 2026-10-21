@@ -11,6 +11,22 @@ function configured() {
   if (missing.length) throw new Error(`Google Sheets is not configured on the server (${missing.join(', ')}).`);
 }
 
+function validAppReturnUrl(value: unknown): value is string {
+  if (typeof value !== 'string' || value.length > 500) return false;
+  try {
+    const url = new URL(value);
+    if (url.username || url.password || url.hash) return false;
+    if (url.protocol === 'mamasshop:' && url.hostname === 'settings' && url.pathname === '/reports') return true;
+    if (url.protocol !== 'exp:' || !url.hostname) return false;
+    if (!url.pathname.endsWith('/--/settings/reports')) return false;
+    const host = url.hostname.toLowerCase();
+    const privateIpv4 = /^(10\.|127\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.)/.test(host);
+    return privateIpv4 || host === 'localhost' || host.endsWith('.expo.dev') || host.endsWith('.exp.direct');
+  } catch {
+    return false;
+  }
+}
+
 async function getUser(request: Request) {
   const auth = request.headers.get('Authorization');
   if (!auth) return null;
@@ -116,10 +132,12 @@ Deno.serve(async (request) => {
     if (body.action === 'connect') {
       step = 'check-google-configuration';
       configured();
+      const returnUrl = body.redirectUrl;
+      if (!validAppReturnUrl(returnUrl)) return json({ error: 'The app return link is invalid. Restart Expo Go and try connecting again.' }, 400);
       const shopName = typeof body.shopName === 'string' ? body.shopName : "Mama's Shop";
       const state = `${crypto.randomUUID()}${crypto.randomUUID().replaceAll('-', '')}`;
       step = 'save-oauth-state';
-      const { error } = await admin.from('google_sheets_oauth_states').insert({ state, owner_id: ownerId, shop_name: typeof body.shopName === 'string' ? body.shopName : "Mama's Shop", expires_at: new Date(Date.now() + 30 * 60_000).toISOString() });
+      const { error } = await admin.from('google_sheets_oauth_states').insert({ state, owner_id: ownerId, shop_name: typeof body.shopName === 'string' ? body.shopName : "Mama's Shop", return_url: returnUrl, expires_at: new Date(Date.now() + 30 * 60_000).toISOString() });
       if (error) throw error;
       step = 'build-google-authorization-url';
       const url = new URL('https://accounts.google.com/o/oauth2/v2/auth');

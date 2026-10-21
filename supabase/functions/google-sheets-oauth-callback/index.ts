@@ -2,9 +2,9 @@ import { createClient } from 'npm:@supabase/supabase-js@2';
 import { createSpreadsheet } from '../_shared/google-sheets.ts';
 
 const admin = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!);
-const redirect = 'mamasshop://settings/reports';
-const appRedirect = (connected: boolean, message?: string) => {
-  const target = new URL(redirect);
+const defaultRedirect = 'mamasshop://settings/reports';
+const appRedirect = (connected: boolean, message?: string, returnUrl = defaultRedirect) => {
+  const target = new URL(returnUrl);
   target.searchParams.set('connected', connected ? '1' : '0');
   if (message) target.searchParams.set('error', message);
   return new Response(null, { status: 302, headers: { Location: target.toString(), 'Cache-Control': 'no-store' } });
@@ -12,18 +12,21 @@ const appRedirect = (connected: boolean, message?: string) => {
 
 Deno.serve(async (request) => {
   const url = new URL(request.url);
-  if (url.searchParams.has('error')) return appRedirect(false, 'Google sign-in was cancelled or denied. Return to the app and try again when ready.');
   const code = url.searchParams.get('code');
   const state = url.searchParams.get('state');
-  if (!code || !state) return appRedirect(false, 'The Google response was incomplete. Return to the app and reconnect.');
+  if (!state) return appRedirect(false, 'The Google response was incomplete. Return to the app and reconnect.');
+  let returnUrl = defaultRedirect;
   try {
-    const { data: pending, error: stateError } = await admin.from('google_sheets_oauth_states').select('state, owner_id, shop_name, expires_at').eq('state', state).gt('expires_at', new Date().toISOString()).maybeSingle();
+    const { data: pending, error: stateError } = await admin.from('google_sheets_oauth_states').select('state, owner_id, shop_name, return_url, expires_at').eq('state', state).gt('expires_at', new Date().toISOString()).maybeSingle();
     if (stateError) {
       console.error('[google-sheets-oauth-callback] state lookup failed', { message: stateError.message, code: stateError.code });
       return appRedirect(false, 'Mama’s Shop could not validate the Google sign-in. Please return to the app and try again.');
     }
     if (!pending) return appRedirect(false, 'This sign-in link expired or was already used. Start a fresh connection in Mama’s Shop.');
     await admin.from('google_sheets_oauth_states').delete().eq('state', state);
+    returnUrl = pending.return_url || defaultRedirect;
+    if (url.searchParams.has('error')) return appRedirect(false, 'Google sign-in was cancelled or denied. Return to the app and try again when ready.', returnUrl);
+    if (!code) return appRedirect(false, 'The Google response was incomplete. Return to the app and reconnect.', returnUrl);
 
     const tokenResponse = await fetch('https://oauth2.googleapis.com/token', { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: new URLSearchParams({ code, client_id: Deno.env.get('GOOGLE_OAUTH_CLIENT_ID')!, client_secret: Deno.env.get('GOOGLE_OAUTH_CLIENT_SECRET')!, redirect_uri: Deno.env.get('GOOGLE_OAUTH_REDIRECT_URI')!, grant_type: 'authorization_code' }) });
     const tokens = await tokenResponse.json();
@@ -36,10 +39,10 @@ Deno.serve(async (request) => {
     const now = new Date().toISOString();
     const { error: saveError } = await admin.from('google_sheets_connections').upsert({ owner_id: pending.owner_id, connected_email: profile.email, spreadsheet_id: spreadsheet.spreadsheetId, spreadsheet_url: spreadsheet.spreadsheetUrl, refresh_token: tokens.refresh_token, access_token: tokens.access_token, access_token_expires_at: new Date(Date.now() + Number(tokens.expires_in ?? 3600) * 1000).toISOString(), syncing_until: null, last_error: null, updated_at: now }, { onConflict: 'owner_id' });
     if (saveError) throw saveError;
-    return appRedirect(true);
+    return appRedirect(true, undefined, returnUrl);
   } catch (error) {
     const message = error instanceof Error ? error.message : 'The Google connection could not be completed.';
     console.error('[google-sheets-oauth-callback] connection failed', { message });
-    return appRedirect(false, message);
+    return appRedirect(false, message, returnUrl);
   }
 });
