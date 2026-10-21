@@ -14,7 +14,11 @@ Deno.serve(async (request) => {
   if (!code || !state) return page('The Google response was incomplete. Return to the app and reconnect.', false);
   try {
     const { data: pending, error: stateError } = await admin.from('google_sheets_oauth_states').select('state, owner_id, shop_name, expires_at').eq('state', state).gt('expires_at', new Date().toISOString()).maybeSingle();
-    if (stateError || !pending) throw new Error('This connection request expired. Please start again in the app.');
+    if (stateError) {
+      console.error('[google-sheets-oauth-callback] state lookup failed', { message: stateError.message, code: stateError.code });
+      throw new Error('Mama’s Shop could not validate the Google sign-in. Please return to the app and try again.');
+    }
+    if (!pending) throw new Error('This sign-in link expired or was already used. Close this browser page and start a fresh connection in Mama’s Shop.');
     await admin.from('google_sheets_oauth_states').delete().eq('state', state);
 
     const tokenResponse = await fetch('https://oauth2.googleapis.com/token', { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: new URLSearchParams({ code, client_id: Deno.env.get('GOOGLE_OAUTH_CLIENT_ID')!, client_secret: Deno.env.get('GOOGLE_OAUTH_CLIENT_SECRET')!, redirect_uri: Deno.env.get('GOOGLE_OAUTH_REDIRECT_URI')!, grant_type: 'authorization_code' }) });

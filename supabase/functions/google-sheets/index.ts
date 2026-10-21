@@ -119,7 +119,7 @@ Deno.serve(async (request) => {
       const shopName = typeof body.shopName === 'string' ? body.shopName : "Mama's Shop";
       const state = `${crypto.randomUUID()}${crypto.randomUUID().replaceAll('-', '')}`;
       step = 'save-oauth-state';
-      const { error } = await admin.from('google_sheets_oauth_states').insert({ state, owner_id: ownerId, shop_name: typeof body.shopName === 'string' ? body.shopName : "Mama's Shop", expires_at: new Date(Date.now() + 10 * 60_000).toISOString() });
+      const { error } = await admin.from('google_sheets_oauth_states').insert({ state, owner_id: ownerId, shop_name: typeof body.shopName === 'string' ? body.shopName : "Mama's Shop", expires_at: new Date(Date.now() + 30 * 60_000).toISOString() });
       if (error) throw error;
       step = 'build-google-authorization-url';
       const url = new URL('https://accounts.google.com/o/oauth2/v2/auth');
