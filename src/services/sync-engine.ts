@@ -125,6 +125,15 @@ export async function syncOutbox(db: SQLiteDatabase, ownerId: string, force = fa
   const pending = await db.getFirstAsync<{ count: number }>('SELECT COUNT(*) AS count FROM sync_outbox WHERE owner_id = ?', ownerId);
   const failedRows = await db.getFirstAsync<{ count: number }>('SELECT COUNT(*) AS count FROM sync_outbox WHERE owner_id = ? AND last_error IS NOT NULL', ownerId);
   const conflicts = await db.getFirstAsync<{ count: number }>('SELECT COUNT(*) AS count FROM sync_conflicts WHERE owner_id = ? AND resolved_at IS NULL', ownerId);
+  if (synced > 0 || downloaded > 0) {
+    // Reporting is a separate copy of the confirmed cloud event journal. A
+    // Sheets outage must never change the result of the business data sync.
+    try {
+      await supabase.functions.invoke('google-sheets', { body: { action: 'sync', ownerId } });
+    } catch (error) {
+      console.warn('[reports] Google Sheets update deferred', error);
+    }
+  }
   const lastSyncedAt = synced ? new Date().toISOString() : (await db.getFirstAsync<{ last_synced_at: string | null }>('SELECT last_synced_at FROM sync_metadata WHERE owner_id = ?', ownerId))?.last_synced_at ?? null;
   if (synced) await db.runAsync('INSERT INTO sync_metadata (owner_id, last_synced_at) VALUES (?, ?) ON CONFLICT(owner_id) DO UPDATE SET last_synced_at = excluded.last_synced_at', ownerId, lastSyncedAt);
   return { synced, downloaded, pending: pending?.count ?? 0, failed: (failedRows?.count ?? failed) + (pullFailed ? 1 : 0), conflicts: conflicts?.count ?? 0, lastSyncedAt };

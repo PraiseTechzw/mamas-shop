@@ -23,6 +23,7 @@ import {
   ChevronRight,
   CircleHelp,
   Cloud,
+  FileSpreadsheet,
   Database,
   Info,
   Languages,
@@ -81,6 +82,12 @@ export function SettingsScreen() {
           subtitle="See device and cloud data protection"
           icon={Database}
           onPress={() => router.push("/settings/backup")}
+        />
+        <SettingsRow
+          title="Reports & Google Sheets"
+          subtitle="Sales, stock, customers, and weekly summaries"
+          icon={FileSpreadsheet}
+          onPress={() => router.push("/settings/reports")}
         />
         <SettingsRow
           title="Language"

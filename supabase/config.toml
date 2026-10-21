@@ -1,0 +1,5 @@
+[functions.google-sheets]
+verify_jwt = false
+
+[functions.google-sheets-oauth-callback]
+verify_jwt = false
