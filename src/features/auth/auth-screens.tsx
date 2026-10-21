@@ -3,6 +3,7 @@ import { ActivityIndicator, Dimensions, Image, ImageBackground, Keyboard, Keyboa
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Svg, { Defs, LinearGradient, Path, Rect, Stop } from 'react-native-svg';
 import { router } from 'expo-router';
+import * as ExpoLinking from 'expo-linking';
 import { ArrowLeft, ArrowRight, Eye, EyeOff, Heart, LockKeyhole, Mail, ShieldCheck, Tag, Truck, UserRound } from 'lucide-react-native';
 import { colors, radius } from '@/constants/theme';
 import { AppText, Field } from '@/components/ui/primitives';
@@ -177,7 +178,7 @@ export function LoginScreen() {
     if (!supabase) { setError('Add the Supabase connection details to your local .env file first.'); return; }
     setBusy(true);
     try {
-      const { error: authError } = await supabase.auth.resetPasswordForEmail(email.current.trim(), { redirectTo: 'mamasshop://reset-password' });
+      const { error: authError } = await supabase.auth.resetPasswordForEmail(email.current.trim(), { redirectTo: ExpoLinking.createURL('reset-password') });
       if (authError) setError(authError.message);
       else setNotice('If an account exists for this email, a reset link is on its way.');
     } catch (value) {

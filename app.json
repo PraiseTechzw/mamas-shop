@@ -9,6 +9,9 @@
     "userInterfaceStyle": "automatic",
     "backgroundColor": "#F7F7FC",
     "primaryColor": "#5B43D6",
+    "ios": {
+      "bundleIdentifier": "com.praisetechzw04.mamasshop"
+    },
     "android": {
       "softwareKeyboardLayoutMode": "pan",
       "adaptiveIcon": {
