@@ -28,7 +28,7 @@ async function getFunctionErrorMessage(error: unknown) {
 export function GoogleSheetsReportsScreen() {
   const db = useSQLiteContext();
   const { session, businessId } = useAuth();
-  const params = useLocalSearchParams<{ connected?: string }>();
+  const params = useLocalSearchParams<{ connected?: string; error?: string }>();
   const ownerId = businessId ?? session?.user.id ?? '';
   const [shopName, setShopName] = useState("Mama's Shop");
   const [status, setStatus] = useState<ConnectionStatus>({ connected: false });
@@ -51,19 +51,16 @@ export function GoogleSheetsReportsScreen() {
   useEffect(() => {
     if (params.connected === '1' || params.connected === '0') {
       void Promise.resolve().then(async () => {
-        if (params.connected === '0') { setMessage('Google connection was cancelled. You can try again any time.'); return; }
-        setMessage('Google Sheets is connected. Your history is being added now.');
-        await load();
-        if (supabase) {
-          setBusy(true);
-          const { data, error } = await supabase.functions.invoke('google-sheets', { body: { action: 'sync', ownerId } });
-          if (error) setMessage(await getFunctionErrorMessage(error));
-          else { setMessage(`Initial history uploaded (${data.synced ?? 0} synced events).`); await load(); }
-          setBusy(false);
+        if (params.connected === '0') {
+          setMessage(typeof params.error === 'string' ? params.error : 'Google connection was cancelled. You can try again any time.');
+          await load();
+          return;
         }
+        setMessage('Google Sheets is connected.');
+        await load();
       });
     }
-  }, [params.connected, load, ownerId]);
+  }, [params.connected, params.error, load]);
 
   const connect = async () => {
     if (!supabase) { setMessage('Cloud sync is not configured for this app yet.'); return; }
@@ -73,6 +70,10 @@ export function GoogleSheetsReportsScreen() {
       if (error) throw error;
       const result = await WebBrowser.openAuthSessionAsync(data.authorizationUrl, 'mamasshop://settings/reports');
       if (result.type === 'success') {
+        const callbackUrl = result.url ? new URL(result.url) : null;
+        const connected = callbackUrl?.searchParams.get('connected');
+        const callbackError = callbackUrl?.searchParams.get('error');
+        if (connected !== '1') throw new Error(callbackError ?? 'Google sign-in did not complete. Start a new connection and finish the Google approval step.');
         setMessage('Google sign-in finished. Loading your spreadsheet…');
         await load();
         const syncResult = await supabase.functions.invoke('google-sheets', { body: { action: 'sync', ownerId } });
