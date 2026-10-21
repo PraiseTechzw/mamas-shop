@@ -3,3 +3,4 @@ verify_jwt = false
 
 [functions.google-sheets-oauth-callback]
 verify_jwt = false
+static_files = ["./functions/google-sheets-oauth-callback/app-icon.png"]
