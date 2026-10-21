@@ -89,8 +89,11 @@ async function syncOwner(ownerId: string) {
 Deno.serve(async (request) => {
   if (request.method === 'OPTIONS') return new Response('ok', { headers: cors });
   if (request.method !== 'POST') return json({ error: 'Use POST.' }, 405);
+  let action: unknown = null;
+  let step = 'parse-request';
   try {
     const body = await request.json().catch(() => ({}));
+    action = body.action ?? null;
     if (body.action === 'scheduled-sync') {
       const expected = Deno.env.get('GOOGLE_SHEETS_SCHEDULER_SECRET');
       if (!expected || request.headers.get('x-scheduler-secret') !== expected) return json({ error: 'Unauthorized scheduler.' }, 401);
@@ -103,34 +106,61 @@ Deno.serve(async (request) => {
       }
       return json({ results });
     }
+    step = 'authenticate-user';
     const user = await getUser(request);
     if (!user) return json({ error: 'Sign in to Mama’s Shop first.' }, 401);
+    step = 'verify-shop-owner';
     const ownerId = typeof body.ownerId === 'string' ? body.ownerId : user.id;
     if (ownerId !== user.id) return json({ error: 'Only the shop owner can connect its Google Sheet.' }, 403);
 
     if (body.action === 'connect') {
+      step = 'check-google-configuration';
       configured();
       const shopName = typeof body.shopName === 'string' ? body.shopName : "Mama's Shop";
       const state = `${crypto.randomUUID()}${crypto.randomUUID().replaceAll('-', '')}`;
+      step = 'save-oauth-state';
       const { error } = await admin.from('google_sheets_oauth_states').insert({ state, owner_id: ownerId, shop_name: typeof body.shopName === 'string' ? body.shopName : "Mama's Shop", expires_at: new Date(Date.now() + 10 * 60_000).toISOString() });
       if (error) throw error;
+      step = 'build-google-authorization-url';
       const url = new URL('https://accounts.google.com/o/oauth2/v2/auth');
       url.search = new URLSearchParams({ client_id: Deno.env.get('GOOGLE_OAUTH_CLIENT_ID')!, redirect_uri: Deno.env.get('GOOGLE_OAUTH_REDIRECT_URI')!, response_type: 'code', scope: 'openid email https://www.googleapis.com/auth/spreadsheets https://www.googleapis.com/auth/drive.file', access_type: 'offline', prompt: 'consent', include_granted_scopes: 'true', state, login_hint: user.email ?? '' }).toString();
       return json({ authorizationUrl: url.toString(), shopName });
     }
     if (body.action === 'status') {
+      step = 'read-connection-status';
       const { data, error } = await admin.from('google_sheets_connections').select('connected_email, spreadsheet_url, last_synced_at, last_error').eq('owner_id', ownerId).maybeSingle();
       if (error) throw error;
       return json({ connected: Boolean(data), ...data });
     }
     if (body.action === 'disconnect') {
+      step = 'remove-google-connection';
       const { error } = await admin.from('google_sheets_connections').delete().eq('owner_id', ownerId);
       if (error) throw error;
       return json({ disconnected: true });
     }
-    if (body.action === 'sync') return json(await syncOwner(ownerId));
+    if (body.action === 'sync') {
+      step = 'sync-workbook';
+      return json(await syncOwner(ownerId));
+    }
     return json({ error: 'Unknown action.' }, 400);
   } catch (error) {
-    return json({ error: error instanceof Error ? error.message : 'Google Sheets operation failed.' }, 400);
+    const details = error && typeof error === 'object' ? error as Record<string, unknown> : {};
+    const message = error instanceof Error
+      ? error.message
+      : typeof error === 'string'
+        ? error
+        : typeof details.message === 'string'
+          ? details.message
+          : 'Google Sheets operation failed.';
+    console.error('[google-sheets] request failed', {
+      action,
+      step,
+      message,
+      code: details.code,
+      details: details.details,
+      hint: details.hint,
+      error: error instanceof Error ? error.stack : JSON.stringify(error),
+    });
+    return json({ error: message }, 400);
   }
 });
