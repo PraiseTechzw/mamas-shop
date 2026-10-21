@@ -157,6 +157,7 @@ revoke all on function public.join_business_with_code(text) from public, anon;
 grant execute on function public.join_business_with_code(text) to authenticated;
 
 drop policy if exists "Users can append their own sync events" on public.sync_events;
+drop policy if exists "Business members can append sync events" on public.sync_events;
 create policy "Business members can append sync events"
   on public.sync_events for insert to authenticated
   with check (
@@ -169,6 +170,7 @@ create policy "Business members can append sync events"
   );
 
 drop policy if exists "Users can read their own sync events" on public.sync_events;
+drop policy if exists "Business members can read sync events" on public.sync_events;
 create policy "Business members can read sync events"
   on public.sync_events for select to authenticated
   using (

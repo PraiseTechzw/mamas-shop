@@ -129,7 +129,8 @@ export async function syncOutbox(db: SQLiteDatabase, ownerId: string, force = fa
     // Reporting is a separate copy of the confirmed cloud event journal. A
     // Sheets outage must never change the result of the business data sync.
     try {
-      await supabase.functions.invoke('google-sheets', { body: { action: 'sync', ownerId } });
+      const { error } = await supabase.functions.invoke('google-sheets', { body: { action: 'sync', ownerId } });
+      if (error) console.warn('[reports] Google Sheets update deferred', error);
     } catch (error) {
       console.warn('[reports] Google Sheets update deferred', error);
     }

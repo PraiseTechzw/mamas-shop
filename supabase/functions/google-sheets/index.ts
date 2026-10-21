@@ -33,7 +33,7 @@ async function accessToken(connection: { access_token: string | null; access_tok
 async function syncOwner(ownerId: string) {
   const { data: connection, error } = await admin.from('google_sheets_connections').select('*').eq('owner_id', ownerId).maybeSingle();
   if (error) throw error;
-  if (!connection) throw new Error('Connect Google Sheets before syncing reports.');
+  if (!connection) return { skipped: true, connected: false, message: 'Connect Google Sheets before syncing reports.' };
   const until = new Date(Date.now() + 10 * 60_000).toISOString();
   const { data: locked, error: lockError } = await admin.from('google_sheets_connections').update({ syncing_until: until }).eq('owner_id', ownerId).or(`syncing_until.is.null,syncing_until.lt.${new Date().toISOString()}`).select('owner_id').maybeSingle();
   if (lockError) throw lockError;

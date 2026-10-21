@@ -12,6 +12,19 @@ import { useSQLiteContext } from 'expo-sqlite';
 
 type ConnectionStatus = { connected: boolean; connected_email?: string; spreadsheet_url?: string; last_synced_at?: string | null; last_error?: string | null };
 
+async function getFunctionErrorMessage(error: unknown) {
+  if (error && typeof error === 'object' && 'context' in error) {
+    const context = (error as { context?: unknown }).context;
+    if (context instanceof Response) {
+      try {
+        const body = await context.clone().json() as { error?: unknown };
+        if (typeof body.error === 'string') return body.error;
+      } catch { /* Use the SDK message when the response is not JSON. */ }
+    }
+  }
+  return error instanceof Error ? error.message : 'Google Sheets request failed.';
+}
+
 export function GoogleSheetsReportsScreen() {
   const db = useSQLiteContext();
   const { session, businessId } = useAuth();
@@ -29,7 +42,7 @@ export function GoogleSheetsReportsScreen() {
     setShopName(settings.shop_name || "Mama's Shop");
     if (!supabase) { setStatus({ connected: false }); setLoading(false); return; }
     const { data, error } = await supabase.functions.invoke('google-sheets', { body: { action: 'status', ownerId } });
-    if (error) setMessage(error.message);
+    if (error) setMessage(await getFunctionErrorMessage(error));
     else setStatus(data as ConnectionStatus);
     setLoading(false);
   }, [db, ownerId]);
@@ -44,7 +57,7 @@ export function GoogleSheetsReportsScreen() {
         if (supabase) {
           setBusy(true);
           const { data, error } = await supabase.functions.invoke('google-sheets', { body: { action: 'sync', ownerId } });
-          if (error) setMessage(error.message);
+          if (error) setMessage(await getFunctionErrorMessage(error));
           else { setMessage(`Initial history uploaded (${data.synced ?? 0} synced events).`); await load(); }
           setBusy(false);
         }
@@ -68,7 +81,7 @@ export function GoogleSheetsReportsScreen() {
         await load();
       } else if (result.type === 'cancel' || result.type === 'dismiss') setMessage('Google connection was cancelled.');
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : 'Google Sheets could not be connected.');
+      setMessage(await getFunctionErrorMessage(error));
     } finally { setBusy(false); }
   };
 
@@ -76,7 +89,7 @@ export function GoogleSheetsReportsScreen() {
     if (!supabase) return;
     setBusy(true); setMessage('Updating the spreadsheet from your synced shop history…');
     const { data, error } = await supabase.functions.invoke('google-sheets', { body: { action: 'sync', ownerId } });
-    if (error) setMessage(error.message);
+    if (error) setMessage(await getFunctionErrorMessage(error));
     else { setMessage(`Spreadsheet updated from ${data.synced ?? 0} business events.`); await load(); }
     setBusy(false);
   };
@@ -87,7 +100,7 @@ export function GoogleSheetsReportsScreen() {
       if (!supabase) return;
       setBusy(true);
       const { error } = await supabase.functions.invoke('google-sheets', { body: { action: 'disconnect', ownerId } });
-      setMessage(error ? error.message : 'Google Sheets disconnected. The spreadsheet remains in your Drive.');
+      setMessage(error ? await getFunctionErrorMessage(error) : 'Google Sheets disconnected. The spreadsheet remains in your Drive.');
       await load(); setBusy(false);
     })(); } },
   ]);
