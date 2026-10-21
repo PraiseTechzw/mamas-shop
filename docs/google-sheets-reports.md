@@ -21,8 +21,9 @@ The first sync backfills the business events already in `sync_events`; later app
 
 1. In Google Cloud, enable the Google Sheets API and Google Drive API. Configure an OAuth consent screen and create a **Web application** OAuth client.
 2. Set its authorized redirect URI to `https://<project-ref>.supabase.co/functions/v1/google-sheets-oauth-callback`.
-3. Apply all Supabase migrations, including `202610210006_google_sheets_reports.sql`.
-4. Set the following **Supabase Edge Function secrets**. Do not put the Google client secret in the app `.env` or source control:
+3. For development, add the connecting account (currently `praisetechzw@gmail.com`) as an OAuth test user. Before offering this to shop users, publish the consent screen and complete any Google branding/scope verification required for the requested Sheets and Drive permissions. A project left in Testing only authorizes listed test users and has limited refresh-token lifetime. Google recommends separate testing and production projects for OAuth clients.
+4. Apply all Supabase migrations, including `202610210006_google_sheets_reports.sql`.
+5. Set the following **Supabase Edge Function secrets**. Do not put the Google client secret in the app `.env` or source control:
 
    ```sh
    supabase secrets set \
@@ -32,21 +33,21 @@ The first sync backfills the business events already in `sync_events`; later app
      GOOGLE_SHEETS_SCHEDULER_SECRET='a-long-random-secret'
    ```
 
-5. Deploy both functions:
+6. Deploy both functions:
 
    ```sh
    supabase functions deploy google-sheets
    supabase functions deploy google-sheets-oauth-callback
    ```
 
-6. Enable `pg_cron` and `pg_net` for the Supabase project, then store the project URL and a publishable key in Supabase Vault. The app’s existing publishable key may be used here; never use a service-role key in cron SQL.
+7. Enable `pg_cron` and `pg_net` for the Supabase project, then store the project URL and a publishable key in Supabase Vault. The app’s existing publishable key may be used here; never use a service-role key in cron SQL.
 
    ```sql
    select vault.create_secret('https://<project-ref>.supabase.co', 'mamas_shop_project_url');
    select vault.create_secret('<publishable-key>', 'mamas_shop_publishable_key');
    ```
 
-7. Schedule the server refresh every 15 minutes. Replace the secret literal with the same value configured as `GOOGLE_SHEETS_SCHEDULER_SECRET` in Supabase Edge Function secrets:
+8. Schedule the server refresh every 15 minutes. Replace the secret literal with the same value configured as `GOOGLE_SHEETS_SCHEDULER_SECRET` in Supabase Edge Function secrets:
 
    ```sql
    select cron.schedule(
@@ -67,7 +68,7 @@ The first sync backfills the business events already in `sync_events`; later app
    );
    ```
 
-8. Deploy the app with its normal Supabase URL and publishable key. In **Settings → Reports & Google Sheets**, choose **Connect Google Sheets** and select `praisetechzw@gmail.com` in Google’s account picker.
+9. Deploy the app with its normal Supabase URL and publishable key. In **Settings → Reports & Google Sheets**, choose **Connect Google Sheets** and select `praisetechzw@gmail.com` in Google’s account picker.
 
 ## Expo Go, production deep links, and EAS builds
 
