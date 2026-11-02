@@ -19,13 +19,15 @@ export function AuthProvider({ children }: PropsWithChildren) {
   const [offlineUserId, setOfflineUserId] = useState<string | null>(null);
   const authEventVersion = useRef(0);
 
-  const restoreOfflineAccess = useCallback(async () => {
+  const restoreOfflineAccess = useCallback(async (canRestore: () => boolean = () => true) => {
     const scope = await getOfflineBusinessScope(db);
-    if (!scope) return false;
+    if (!scope || !canRestore()) return false;
+    const settings = await getShopSettings(db, scope.business_id);
+    if (!canRestore()) return false;
     setOfflineUserId(scope.user_id);
     setBusinessIdState(scope.business_id);
     setBusinessLoading(false);
-    setAppCurrency((await getShopSettings(db, scope.business_id)).currency);
+    setAppCurrency(settings.currency);
     return true;
   }, [db]);
 
@@ -35,7 +37,7 @@ export function AuthProvider({ children }: PropsWithChildren) {
       // The offline scope is read from SQLite before the root route can decide
       // whether to show the welcome screen or the saved shop.
       // eslint-disable-next-line react-hooks/set-state-in-effect
-      void restoreOfflineAccess().catch((error) => {
+      void restoreOfflineAccess(() => active).catch((error) => {
         console.error('[auth] Could not restore the saved shop for offline use', error);
       }).finally(() => {
         if (active) {
@@ -47,7 +49,7 @@ export function AuthProvider({ children }: PropsWithChildren) {
     }
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, nextSession) => {
-      if (event !== 'INITIAL_SESSION') authEventVersion.current += 1;
+      if (event !== 'INITIAL_SESSION' || nextSession) authEventVersion.current += 1;
       if (nextSession) {
         setSession(nextSession);
         setOfflineUserId(null);
@@ -75,9 +77,14 @@ export function AuthProvider({ children }: PropsWithChildren) {
         let restored = false;
         if (error) {
           try {
-            restored = await restoreOfflineAccess();
+            restored = await restoreOfflineAccess(() => active && authEventVersion.current === requestVersion);
           } catch (restoreError) {
             console.error('[auth] Could not restore the saved shop for offline use', restoreError);
+          }
+          if (!active) return;
+          if (authEventVersion.current !== requestVersion) {
+            setAuthLoading(false);
+            return;
           }
           if (!restored) console.warn('[auth] Could not restore a saved session', error);
         }
@@ -91,11 +98,20 @@ export function AuthProvider({ children }: PropsWithChildren) {
       setAuthLoading(false);
     }).catch(async (error) => {
       if (!active) return;
+      if (authEventVersion.current !== requestVersion) {
+        setAuthLoading(false);
+        return;
+      }
       let restored = false;
       try {
-        restored = await restoreOfflineAccess();
+        restored = await restoreOfflineAccess(() => active && authEventVersion.current === requestVersion);
       } catch (restoreError) {
         console.error('[auth] Could not restore the saved shop for offline use', restoreError);
+      }
+      if (!active) return;
+      if (authEventVersion.current !== requestVersion) {
+        setAuthLoading(false);
+        return;
       }
       if (!restored) {
         console.error('[auth] Could not restore a saved session', error);
