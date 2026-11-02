@@ -26,6 +26,8 @@ Expo UI and NativeWind have different jobs: Expo UI supplies native controls; Na
 7. An owner seller profile is created during first-run setup so each sale has an accountable seller. Seller attribution, locations, and membership data remain supported by the local schema and sync stream for compatibility, while seller/team and multiple-location management screens are deferred from the MVP.
 8. Preserve audit history for sales, repayments, expenses, stock movements, customers, sellers, locations, and shop settings. Never silently overwrite financial or inventory events.
 
+Supabase keeps the authenticated session in persistent device storage. If session restoration fails, the app may reopen the most recently active business scope only when that business already has local data. This is local-only access: it never authorizes Supabase requests, and queued changes wait for a valid session before syncing. An explicit sign-out clears this local access for the current app run.
+
 Use stable operation IDs and server-side idempotency so a retry cannot create a duplicate sale, repayment, or stock movement. Treat network reachability as a hint: a connected device may still fail to reach Supabase. Never report a queued offline write as server-synced until the server confirms it.
 
 The retained server membership migrations support one-use, expiring business invitations for a future staff-access release. New cloud events record the authenticated uploader in `actor_id`; existing owner events are backfilled to the owner. Apply all `supabase/migrations/` files before enabling cloud sync.

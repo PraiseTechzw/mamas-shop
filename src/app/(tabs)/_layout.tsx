@@ -7,10 +7,10 @@ import { useAuth } from '@/features/auth/auth-context';
 import { LoadingScreen } from '@/components/ui/primitives';
 
 export default function TabsLayout() {
-  const { session, loading } = useAuth();
+  const { session, offlineAccess, loading } = useAuth();
   const insets = useSafeAreaInsets();
   if (loading) return <LoadingScreen />;
-  if (!session) return <Redirect href="/(auth)/welcome" />;
+  if (!session && !offlineAccess) return <Redirect href="/(auth)/welcome" />;
   const tabBarIcon = (Icon: typeof House) => function RenderTabBarIcon({ color, focused }: { color: ColorValue; focused: boolean }) {
     return <View style={[styles.iconSlot, focused && styles.activeIconSlot]}><Icon color={color} size={19} strokeWidth={2.2} /></View>;
   };

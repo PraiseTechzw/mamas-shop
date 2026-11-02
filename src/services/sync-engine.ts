@@ -129,8 +129,11 @@ export async function syncOutbox(db: SQLiteDatabase, ownerId: string, force = fa
     // Reporting is a separate copy of the confirmed cloud event journal. A
     // Sheets outage must never change the result of the business data sync.
     try {
-      const { error } = await supabase.functions.invoke('google-sheets', { body: { action: 'sync', ownerId } });
-      if (error) console.warn('[reports] Google Sheets update deferred', error);
+      const functions = supabase?.functions;
+      if (functions?.invoke) {
+        const { error } = await functions.invoke('google-sheets', { body: { action: 'sync', ownerId } });
+        if (error) console.warn('[reports] Google Sheets update deferred', error);
+      }
     } catch (error) {
       console.warn('[reports] Google Sheets update deferred', error);
     }
@@ -182,7 +185,6 @@ async function pullRemoteEvents(db: SQLiteDatabase, ownerId: string) {
         });
         await db.withTransactionAsync(async () => {
           await db.runAsync('INSERT OR IGNORE INTO sync_conflicts (idempotency_key, owner_id, description, created_at, payload_json) VALUES (?, ?, ?, ?, ?)', event.idempotency_key, ownerId, description, new Date().toISOString(), JSON.stringify(event));
-          await db.runAsync('INSERT OR IGNORE INTO sync_applied_events (idempotency_key, owner_id, applied_at) VALUES (?, ?, ?)', event.idempotency_key, ownerId, new Date().toISOString());
           await db.runAsync('INSERT INTO sync_metadata (owner_id, last_pulled_at, last_pulled_key) VALUES (?, ?, ?) ON CONFLICT(owner_id) DO UPDATE SET last_pulled_at = excluded.last_pulled_at, last_pulled_key = excluded.last_pulled_key', ownerId, event.received_at, event.idempotency_key);
         });
       }
@@ -191,11 +193,7 @@ async function pullRemoteEvents(db: SQLiteDatabase, ownerId: string) {
     }
     if (events.length < BATCH_SIZE) break;
   }
-  // A sale or stock event can arrive before the product, customer, seller, or
-  // location it references. Retry deferred events after the full pull so later
-  // events in this batch can satisfy those dependencies automatically.
-  const recovered = await retrySyncConflicts(db, ownerId);
-  return downloaded + recovered;
+  return downloaded;
 }
 
 export async function retrySyncConflicts(db: SQLiteDatabase, ownerId: string) {

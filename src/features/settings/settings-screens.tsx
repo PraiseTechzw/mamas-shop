@@ -42,6 +42,7 @@ import { useCallback, useEffect, useState, type ReactNode } from "react";
 import { Alert, Image, Pressable, StyleSheet, View } from "react-native";
 
 export function SettingsScreen() {
+  const { session, offlineAccess } = useAuth();
   const signOut = async () => {
     const result = await supabase?.auth.signOut();
     if (result?.error) Alert.alert("Could not sign out", result.error.message);
@@ -109,16 +110,29 @@ export function SettingsScreen() {
           onPress={() => router.push("/settings/about")}
         />
       </Card>
-      <Pressable
-        accessibilityRole="button"
-        onPress={() => void signOut()}
-        style={styles.signout}
-      >
-        <LogOut size={18} color={colors.danger} />
-        <AppText variant="label" color={colors.danger}>
-          Log out
-        </AppText>
-      </Pressable>
+      {offlineAccess ? (
+        <Pressable
+          accessibilityRole="button"
+          onPress={() => router.push("/(auth)/login")}
+          style={styles.signin}
+        >
+          <WifiOff size={18} color={colors.deepPurple} />
+          <AppText variant="label" color={colors.deepPurple}>
+            Log in to sync
+          </AppText>
+        </Pressable>
+      ) : session ? (
+        <Pressable
+          accessibilityRole="button"
+          onPress={() => void signOut()}
+          style={styles.signout}
+        >
+          <LogOut size={18} color={colors.danger} />
+          <AppText variant="label" color={colors.danger}>
+            Log out
+          </AppText>
+        </Pressable>
+      ) : null}
     </Page>
   );
 }
@@ -962,8 +976,8 @@ function AboutLinkRow({
 
 export function SyncSettingsScreen() {
   const db = useSQLiteContext();
-  const { session, businessId } = useAuth();
-  const ownerId = businessId ?? session?.user.id ?? "";
+  const { session, userId, businessId, offlineAccess } = useAuth();
+  const ownerId = businessId ?? userId ?? "";
   const {
     connection,
     syncing,
@@ -977,6 +991,7 @@ export function SyncSettingsScreen() {
   } = useSyncStatus();
   const [checkingConnection, setCheckingConnection] = useState(false);
   const [connectionError, setConnectionError] = useState("");
+  const needsSignIn = offlineAccess && !session && unavailable !== "not-configured";
   const [uploadErrors, setUploadErrors] = useState<{
     operation: string;
     entity_type: string;
@@ -1038,8 +1053,9 @@ export function SyncSettingsScreen() {
               color={colors.secondary}
               style={{ textAlign: "center", lineHeight: 21 }}
             >
-              No internet connection right now. Your work stays saved here and
-              can sync when you reconnect.
+              {needsSignIn
+                ? "No internet connection right now. Your work stays saved here; sign in again when you reconnect to sync."
+                : "No internet connection right now. Your work stays saved here and can sync when you reconnect."}
             </AppText>
           </View>
           <View className="gap-3 rounded-2xl border border-line bg-surface p-4">
@@ -1089,7 +1105,9 @@ export function SyncSettingsScreen() {
         ? require("@/assets/images/shop-illustrations/sync/sync-pending.png")
         : require("@/assets/images/shop-illustrations/sync/sync-complete.png");
   const statusLabel =
-    unavailable === "not-configured"
+    needsSignIn
+      ? "Sign-in needed to sync"
+      : unavailable === "not-configured"
       ? "Setup needed"
       : unavailable === "signed-out"
         ? "Sign-in required"
@@ -1113,7 +1131,9 @@ export function SyncSettingsScreen() {
           ? "purple"
           : "green";
   const headline =
-    unavailable === "not-configured"
+    needsSignIn
+      ? "Your shop is available offline"
+      : unavailable === "not-configured"
       ? "Cloud sync needs setup"
       : unavailable === "signed-out"
         ? "Sign in to sync your shop"
@@ -1125,7 +1145,9 @@ export function SyncSettingsScreen() {
               ? `${pending} saved ${pending === 1 ? "change" : "changes"} waiting`
               : "Your saved changes are up to date";
   const description =
-    unavailable === "not-configured"
+    needsSignIn
+      ? "This saved shop is open in local-only mode. Sign in again when connected to sync saved changes."
+      : unavailable === "not-configured"
       ? "Your records stay on this device. Add your Supabase project connection and apply the sync migrations to enable cloud sync."
       : unavailable === "signed-out"
         ? "Sign in to connect this device to your shop and sync its saved changes."
@@ -1182,10 +1204,10 @@ export function SyncSettingsScreen() {
           />
         </View>
         <PrimaryButton
-          label={syncing ? "Syncing…" : failed > 0 ? "Retry sync now" : "Sync now"}
+          label={needsSignIn ? "Log in to sync" : syncing ? "Syncing…" : failed > 0 ? "Retry sync now" : "Sync now"}
           loading={syncing}
-          disabled={connection !== "online" || Boolean(unavailable)}
-          onPress={() => void syncNow(true)}
+          disabled={connection !== "online" || (Boolean(unavailable) && !needsSignIn)}
+          onPress={() => needsSignIn ? router.push("/(auth)/login") : void syncNow(true)}
         />
       {failed > 0 ? (
         <View className="gap-3 rounded-2xl border border-danger/20 bg-surface p-4">
@@ -1403,6 +1425,15 @@ const styles = StyleSheet.create({
     alignItems: "center",
     gap: 9,
     backgroundColor: colors.dangerTint,
+    borderRadius: 14,
+  },
+  signin: {
+    minHeight: 52,
+    flexDirection: "row",
+    justifyContent: "center",
+    alignItems: "center",
+    gap: 9,
+    backgroundColor: colors.lavenderTint,
     borderRadius: 14,
   },
   receiptPreview: {

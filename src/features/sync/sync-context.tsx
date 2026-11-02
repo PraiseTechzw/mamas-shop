@@ -1,5 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type PropsWithChildren } from 'react';
-import { Image, StyleSheet, View } from 'react-native';
+import { Image, Pressable, StyleSheet, View } from 'react-native';
+import { router } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useSQLiteContext } from 'expo-sqlite';
 import { colors } from '@/constants/theme';
@@ -35,8 +36,8 @@ const failedArt = require('@/assets/images/shop-illustrations/sync/sync-failed.p
 
 export function SyncProvider({ children }: PropsWithChildren) {
   const db = useSQLiteContext();
-  const { session, businessId, configured } = useAuth();
-  const ownerId = session ? businessId ?? '' : '';
+  const { session, businessId, offlineAccess, configured } = useAuth();
+  const ownerId = session || offlineAccess ? businessId ?? session?.user.id ?? '' : '';
   const [connection, setConnection] = useState<ConnectionState>('checking');
   const [syncing, setSyncing] = useState(false);
   const [pending, setPending] = useState(0);
@@ -61,7 +62,7 @@ export function SyncProvider({ children }: PropsWithChildren) {
   }, [db, ownerId]);
 
   const syncNow = useCallback(async (force = false) => {
-    if (connection !== 'online' || !ownerId) return;
+    if (connection !== 'online' || !ownerId || !session) return;
     if (running.current) { rerunRequested.current = true; return; }
     running.current = true;
     setSyncing(true);
@@ -80,7 +81,7 @@ export function SyncProvider({ children }: PropsWithChildren) {
         setTimeout(() => { void syncNow(); }, 0);
       }
     }
-  }, [connection, db, ownerId, refreshSummary]);
+  }, [connection, db, ownerId, refreshSummary, session]);
 
   const refreshConnection = useCallback(async () => {
     const state = await checkConnection();
@@ -91,7 +92,7 @@ export function SyncProvider({ children }: PropsWithChildren) {
   useEffect(() => subscribeToConnection(setConnection), []);
   useEffect(() => {
     const client = supabase;
-    if (!client || !ownerId) return;
+    if (!client || !ownerId || !session) return;
     const channel = client
       .channel(`shop-changes:${ownerId}`)
       .on('postgres_changes', {
@@ -102,7 +103,7 @@ export function SyncProvider({ children }: PropsWithChildren) {
       }, () => { void syncNow(); })
       .subscribe();
     return () => { void client.removeChannel(channel); };
-  }, [ownerId, syncNow]);
+  }, [ownerId, session, syncNow]);
   useEffect(() => subscribeSyncRequested(() => {
     // Every local business write is queued through enqueueChange(), which
     // publishes this event after the SQLite transaction has had time to commit.
@@ -115,14 +116,14 @@ export function SyncProvider({ children }: PropsWithChildren) {
   useEffect(() => { void refreshSummary(); }, [refreshSummary]);
   useEffect(() => { if (connection === 'online') void syncNow(); }, [connection, syncNow]);
   useEffect(() => {
-    if (connection !== 'online' || pending === 0 || unavailable) return;
+    if (connection !== 'online' || pending === 0 || unavailable || !session) return;
     let timer: ReturnType<typeof setTimeout>;
     let active = true;
     void getSyncRetryDelay(db, ownerId).then((delay) => {
       if (active) timer = setTimeout(() => { void syncNow(); }, delay);
     });
     return () => { active = false; if (timer) clearTimeout(timer); };
-  }, [connection, pending, failed, db, ownerId, syncNow, unavailable]);
+  }, [connection, pending, failed, db, ownerId, syncNow, unavailable, session]);
 
   const value = useMemo(() => ({ connection, syncing, pending, failed, conflicts, revision, lastSyncedAt, unavailable: configured ? unavailable : 'not-configured', syncNow, refreshConnection }), [connection, syncing, pending, failed, conflicts, revision, lastSyncedAt, unavailable, configured, syncNow, refreshConnection]);
   return <SyncContext.Provider value={value}><View style={{ flex: 1 }}><NetworkSyncBanner /><View style={{ flex: 1 }}>{children}</View></View></SyncContext.Provider>;
@@ -132,20 +133,23 @@ export function useSyncStatus() { return useContext(SyncContext); }
 
 export function NetworkSyncBanner() {
   const insets = useSafeAreaInsets();
-  const { session } = useAuth();
+  const { session, offlineAccess } = useAuth();
   const { connection, syncing, pending, failed, conflicts, unavailable, lastSyncedAt } = useSyncStatus();
   const offline = connection === 'offline';
   const needsSetup = unavailable === 'not-configured';
   const failedState = failed > 0 && !offline;
   // Keep the app header clear during normal operation. Show this banner only
   // when the connection or sync queue needs the user's attention.
-  const show = connection === 'checking' || offline || syncing || pending > 0 || failedState || conflicts > 0 || needsSetup;
-  if (!session || !show) return null;
+  const localOnly = offlineAccess && !session;
+  const show = connection === 'checking' || offline || syncing || pending > 0 || failedState || conflicts > 0 || needsSetup || localOnly;
+  if ((!session && !offlineAccess) || !show) return null;
   const image = offline ? offlineArt : failedState ? failedArt : syncing ? pendingArt : pending ? pendingArt : completeArt;
-  const message = offline ? 'Offline · changes stay on this device' : connection === 'checking' ? 'Checking network connection…' : needsSetup ? 'Online · cloud sync needs setup' : syncing ? 'Syncing saved changes…' : conflicts > 0 ? `${conflicts} cloud change${conflicts === 1 ? '' : 's'} need review` : failedState ? `${failed} changes will retry automatically` : `${pending} saved ${pending === 1 ? 'change' : 'changes'} waiting to sync`;
+  const message = localOnly
+    ? offline ? 'Offline · your saved shop is ready. Changes stay on this device.' : 'Sign in again to sync changes from this device.'
+    : offline ? 'Offline · changes stay on this device' : connection === 'checking' ? 'Checking network connection…' : needsSetup ? 'Online · cloud sync needs setup' : syncing ? 'Syncing saved changes…' : conflicts > 0 ? `${conflicts} cloud change${conflicts === 1 ? '' : 's'} need review` : failedState ? `${failed} changes will retry automatically` : `${pending} saved ${pending === 1 ? 'change' : 'changes'} waiting to sync`;
   return <View accessibilityLiveRegion="polite" style={[styles.banner, { paddingTop: Math.max(5, insets.top) }, offline && styles.offline, failedState && styles.failed]}>
     <Image source={image} resizeMode="contain" style={styles.art} accessibilityLabel={offline ? 'Shop offline' : 'Shop sync status'} />
-    <View style={styles.message}><AppText variant="small" color={colors.deepPurple}>{message}</AppText>{lastSyncedAt && !offline ? <AppText variant="small" color={colors.secondary}>Last synced {formatDateTime(lastSyncedAt)}</AppText> : null}</View>
+    <View style={styles.message}><AppText variant="small" color={colors.deepPurple}>{message}</AppText>{lastSyncedAt && !offline ? <AppText variant="small" color={colors.secondary}>Last synced {formatDateTime(lastSyncedAt)}</AppText> : null}{localOnly && !offline ? <Pressable accessibilityRole="button" onPress={() => router.push('/(auth)/login')}><AppText variant="small" color={colors.purple}>Log in to sync</AppText></Pressable> : null}</View>
   </View>;
 }
 

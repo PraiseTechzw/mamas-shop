@@ -434,7 +434,7 @@ export function DailySummaryScreen() {
 
 export function SalesScreen() {
   const db = useSQLiteContext();
-  const { session, businessId } = useAuth();
+  const { session, userId, businessId } = useAuth();
   const { revision } = useSyncStatus();
   const ownerId = businessId ?? session?.user.id ?? "";
   const [rows, setRows] = useState<Product[]>([]);
@@ -465,12 +465,12 @@ export function SalesScreen() {
         "Shop owner",
     );
     void (async () => {
-      const isOwner = Boolean(session && businessId === session.user.id);
+      const isOwner = Boolean(userId && businessId === userId);
       const primary = isOwner ? await ensurePrimaryLocation(db, ownerId) : null;
       const currentSeller = isOwner
         ? await ensureOwnerSeller(db, ownerId, ownerName)
-        : session
-          ? await ensureUserSeller(db, ownerId, session.user.id, ownerName)
+        : userId
+          ? await ensureUserSeller(db, ownerId, userId, ownerName)
           : null;
       const [locationRows, sellerRows] = await Promise.all([
         listLocations(db, ownerId),
@@ -489,6 +489,7 @@ export function SalesScreen() {
     db,
     ownerId,
     businessId,
+    userId,
     session,
     session?.user.id,
     session?.user.email,
@@ -801,8 +802,8 @@ const paymentMethods: {
 export function CheckoutScreen() {
   const insets = useSafeAreaInsets();
   const db = useSQLiteContext();
-  const { session, businessId } = useAuth();
-  const ownerId = businessId ?? session?.user.id ?? "";
+  const { userId, businessId } = useAuth();
+  const ownerId = businessId ?? userId ?? "";
 
   const lines = useCart((s) => s.lines);
   const customerId = useCart((s) => s.customerId);
@@ -912,7 +913,7 @@ export function CheckoutScreen() {
         amountTenderedCents: tendered,
         changeDueCents: changeDisp === "OWED" ? change : 0,
         method,
-        createdBy: session?.user.id ?? null,
+        createdBy: userId ?? null,
         sellerId,
         locationId,
         ownerId,

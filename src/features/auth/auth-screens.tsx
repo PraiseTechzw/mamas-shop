@@ -4,7 +4,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import Svg, { Defs, LinearGradient, Path, Rect, Stop } from 'react-native-svg';
 import { router } from 'expo-router';
 import * as ExpoLinking from 'expo-linking';
-import { ArrowLeft, ArrowRight, Eye, EyeOff, Heart, LockKeyhole, Mail, ShieldCheck, Tag, Truck, UserRound } from 'lucide-react-native';
+import { ArrowLeft, ArrowRight, Eye, EyeOff, LockKeyhole, Mail, Package, RefreshCw, UserRound, UsersRound, WifiOff } from 'lucide-react-native';
 import { colors, radius } from '@/constants/theme';
 import { AppText, Field } from '@/components/ui/primitives';
 import { useAuth } from './auth-context';
@@ -62,24 +62,39 @@ function StorefrontHero() {
 
 function WelcomeBenefits() {
   const benefits = [
-    { label: 'Safe &\nSecure', Icon: ShieldCheck, color: colors.purple },
-    { label: 'Fast\nDelivery', Icon: Truck, color: colors.gold },
-    { label: 'Great\nPrices', Icon: Tag, color: colors.purple },
-    { label: 'Local\nBusiness', Icon: Heart, color: colors.gold },
+    { label: 'Sell &\ntrack stock', Icon: Package, color: colors.purple },
+    { label: 'Customer\ncredit', Icon: UsersRound, color: colors.gold },
+    { label: 'Works\noffline', Icon: WifiOff, color: colors.purple },
+    { label: 'Syncs when\nyou reconnect', Icon: RefreshCw, color: colors.gold },
   ];
   return <View style={styles.benefits}>{benefits.map(({ label, Icon, color }) => <View key={label} style={styles.benefit}>
-    <View style={[styles.benefitIcon, { backgroundColor: color }]}><Icon size={19} color={color === colors.gold ? colors.deepPurple : colors.surface} fill={label.startsWith('Local') ? (color === colors.gold ? colors.deepPurple : colors.surface) : 'none'} strokeWidth={2.5} /></View>
+    <View style={[styles.benefitIcon, { backgroundColor: color }]}><Icon size={19} color={color === colors.gold ? colors.deepPurple : colors.surface} strokeWidth={2.5} /></View>
     <AppText variant="small" color={colors.deepPurple} style={styles.benefitLabel}>{label}</AppText>
   </View>)}</View>;
 }
 
+function OfflineFirstNotice({ firstSignIn = false }: { firstSignIn?: boolean }) {
+  return <View style={styles.offlineNotice}>
+    <View style={styles.offlineNoticeIcon}><WifiOff size={18} color={colors.deepPurple} /></View>
+    <View style={styles.offlineNoticeCopy}>
+      <AppText variant="label" color={colors.deepPurple}>Your shop works offline</AppText>
+      <AppText variant="small" color={colors.secondary} style={styles.offlineNoticeDescription}>
+        {firstSignIn
+          ? 'First sign-in needs internet. After setup, sales and stock stay on this phone and sync when you reconnect.'
+          : 'Sign in once while connected. Saved sales, stock, and customer credit stay on this phone when you are offline.'}
+      </AppText>
+    </View>
+  </View>;
+}
+
 export function WelcomeScreen() {
   return <SafeAreaView className="flex-1" style={styles.welcomeCanvas} edges={['top', 'bottom']}>
-    <ScrollView className="flex-1" style={styles.welcomeCanvas} contentContainerStyle={styles.welcome}>
+    <ScrollView className="flex-1" style={styles.welcomeCanvas} contentInsetAdjustmentBehavior="automatic" contentContainerStyle={styles.welcome}>
       <BrandHeader />
-      <AppText variant="small" color={colors.secondary} style={styles.welcomePromise}>Quality products  •  Fair prices  •{ '\n' }Serving our community</AppText>
+      <AppText variant="small" color={colors.secondary} style={styles.welcomePromise}>Sell, track stock, and manage customer credit—all in one simple shop app.</AppText>
       <WelcomeBenefits />
       <StorefrontHero />
+      <OfflineFirstNotice />
       <View style={styles.welcomeActions}>
         <AuthButton label="Get Started" icon={<ArrowRight size={21} color={colors.surface} />} onPress={() => router.push('/(auth)/login')} />
         <AuthButton label="Log In" variant="secondary" onPress={() => router.push('/(auth)/login')} />
@@ -190,7 +205,7 @@ export function LoginScreen() {
 
   return <SafeAreaView className="flex-1 bg-canvas" edges={['top', 'bottom']}>
     <KeyboardAvoidingView className="flex-1 bg-canvas" behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
-      <ScrollView ref={loginScroll} className="flex-1 bg-canvas" keyboardDismissMode="none" keyboardShouldPersistTaps="always" scrollEventThrottle={16} onScroll={(event) => { scrollOffset.current = event.nativeEvent.contentOffset.y; }} contentContainerStyle={styles.loginPage}>
+      <ScrollView ref={loginScroll} className="flex-1 bg-canvas" contentInsetAdjustmentBehavior="automatic" keyboardDismissMode="none" keyboardShouldPersistTaps="always" scrollEventThrottle={16} onScroll={(event) => { scrollOffset.current = event.nativeEvent.contentOffset.y; }} contentContainerStyle={styles.loginPage}>
         <Pressable accessibilityRole="button" accessibilityLabel="Back to welcome screen" onPress={() => router.replace('/(auth)/welcome')} hitSlop={10} style={styles.backButton}>
           <ArrowLeft size={18} stroke={colors.deepPurple} />
         </Pressable>
@@ -199,6 +214,7 @@ export function LoginScreen() {
           <AppText variant="title" style={styles.loginTitle}>{creating ? 'Create your account' : 'Welcome back!'}</AppText>
           <AppText color={colors.secondary} style={styles.loginSubtitle}>{creating ? 'Set up your sign-in to manage your business.' : 'Sign in to continue managing your business.'}</AppText>
         </View>
+        <OfflineFirstNotice firstSignIn />
         <View style={styles.form}>
           {creating ? <Field key="full-name" label="Your name" placeholder="e.g. Mama Moyo" icon={<UserRound size={18} color={colors.secondary} />} focusAccent inputRef={fullNameInput} onFocus={() => focusField(fullNameInput.current)} autoCapitalize="words" defaultValue="" onChangeText={(value) => { fullName.current = value; }} onSubmitEditing={() => emailInput.current?.focus()} returnKeyType="next" submitBehavior="submit" /> : null}
           <Field key="email" label="Email address" placeholder="you@example.com" icon={<Mail size={18} color={colors.secondary} />} focusAccent inputRef={emailInput} onFocus={() => focusField(emailInput.current)} keyboardType="email-address" autoCapitalize="none" autoCorrect={false} defaultValue="" onChangeText={(value) => { email.current = value; }} onSubmitEditing={() => passwordInput.current?.focus()} returnKeyType="next" submitBehavior="submit" />
@@ -228,14 +244,18 @@ export function LoginScreen() {
 
 const styles = StyleSheet.create({
   welcomeCanvas: { backgroundColor: colors.background },
-  welcome: { flexGrow: 1, justifyContent: 'flex-start', paddingHorizontal: 22, paddingTop: 8, paddingBottom: 62, gap: 8 },
+  welcome: { flexGrow: 1, justifyContent: 'flex-start', paddingHorizontal: 22, paddingTop: 8, paddingBottom: 62, gap: 10 },
   brandBlock: { alignItems: 'center', gap: 4, alignSelf: 'stretch' },
   welcomeLogo: { width: '80%', aspectRatio: 2.34, maxHeight: 122, alignSelf: 'center' },
-  welcomePromise: { textAlign: 'center', fontSize: 13, lineHeight: 19, marginTop: -7 },
-  benefits: { flexDirection: 'row', justifyContent: 'space-around', alignItems: 'flex-start', paddingHorizontal: 2, paddingTop: 2, paddingBottom: 3 },
-  benefit: { flex: 1, alignItems: 'center', gap: 4 },
+  welcomePromise: { textAlign: 'center', fontSize: 13, lineHeight: 19, marginTop: -7, paddingHorizontal: 8 },
+  benefits: { flexDirection: 'row', justifyContent: 'space-around', alignItems: 'flex-start', paddingHorizontal: 2, paddingTop: 2, paddingBottom: 3, gap: 2 },
+  benefit: { flex: 1, alignItems: 'center', gap: 4, minWidth: 0 },
   benefitIcon: { width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center' },
   benefitLabel: { fontFamily: 'Inter-SemiBold', fontSize: 11, lineHeight: 14, textAlign: 'center' },
+  offlineNotice: { flexDirection: 'row', alignItems: 'flex-start', gap: 10, padding: 12, borderRadius: 14, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.lavenderTint },
+  offlineNoticeIcon: { width: 32, height: 32, alignItems: 'center', justifyContent: 'center', borderRadius: 10, backgroundColor: colors.surface },
+  offlineNoticeCopy: { flex: 1, gap: 3, paddingTop: 1 },
+  offlineNoticeDescription: { lineHeight: 17 },
   compactBrandBlock: { marginBottom: 8 },
   compactWelcomeLogo: { width: '72%', aspectRatio: 2.34, maxHeight: 90, alignSelf: 'center' },
   hero: { aspectRatio: 1.5, overflow: 'hidden', alignSelf: 'stretch', marginHorizontal: -22 },
@@ -253,7 +273,7 @@ const styles = StyleSheet.create({
   country: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', paddingTop: 5, marginTop: 'auto', gap: 12 },
   flag: { fontSize: 23 },
   footerDivider: { width: 1.5, height: 22, borderRadius: 999, backgroundColor: colors.gold },
-  loginPage: { flexGrow: 1, paddingHorizontal: 24, paddingTop: 12, paddingBottom: 18, gap: 16 },
+  loginPage: { flexGrow: 1, paddingHorizontal: 24, paddingTop: 12, paddingBottom: 18, gap: 14 },
   backButton: { width: 38, height: 38, borderRadius: 13, backgroundColor: colors.lavenderTint, alignItems: 'center', justifyContent: 'center' },
   loginIntro: { alignItems: 'center', gap: 3, marginTop: 2, marginBottom: 2 },
   loginTitle: { color: colors.deepPurple, textAlign: 'center', fontSize: 24 },
