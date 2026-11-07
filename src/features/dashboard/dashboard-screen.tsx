@@ -1,11 +1,20 @@
 import { useCallback, useEffect, useState, type ReactNode } from 'react';
 import {
-  Animated,
   Pressable,
   RefreshControl,
   ScrollView,
   View,
 } from 'react-native';
+import Animated, {
+  Easing,
+  ReduceMotion,
+  cubicBezier,
+  useAnimatedStyle,
+  useReducedMotion,
+  useSharedValue,
+  withSequence,
+  withTiming,
+} from 'react-native-reanimated';
 import { router } from 'expo-router';
 import { useSQLiteContext } from 'expo-sqlite';
 import {
@@ -13,6 +22,7 @@ import {
   ArrowUp,
   ChartNoAxesColumnIncreasing,
   ChevronRight,
+  CircleCheck,
   CircleUserRound,
   Clock,
   CreditCard,
@@ -96,26 +106,8 @@ function salesDiff(
   return { label: `${pct > 0 ? '+' : ''}${pct}% vs yesterday`, positive: pct > 0 };
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Count-up hook
-// ─────────────────────────────────────────────────────────────────────────────
-
-function useCountUp(target: number, duration = 900) {
-  const [anim] = useState(() => new Animated.Value(0));
-  const [display, setDisplay] = useState(0);
-
-  useEffect(() => {
-    Animated.timing(anim, {
-      toValue: target,
-      duration,
-      useNativeDriver: false,
-    }).start();
-    const id = anim.addListener(({ value }) => setDisplay(Math.round(value)));
-    return () => anim.removeListener(id);
-  }, [target, duration, anim]);
-
-  return display;
-}
+const pressEaseOut = cubicBezier(0.23, 1, 0.32, 1);
+const refreshEaseOut = Easing.bezier(0.23, 1, 0.32, 1);
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Screen
@@ -129,8 +121,11 @@ export function DashboardScreen() {
 
   const [data, setData] = useState(emptyData);
   const [refreshing, setRefreshing] = useState(false);
-  // Start at 1 so content is always visible — no black screen
-  const [fadeAnim] = useState(() => new Animated.Value(1));
+  const reduceMotion = useReducedMotion();
+  const contentOpacity = useSharedValue(1);
+  const contentAnimatedStyle = useAnimatedStyle(() => ({
+    opacity: contentOpacity.get(),
+  }));
 
   const accountName = String(
     session?.user.user_metadata?.full_name ??
@@ -154,15 +149,27 @@ export function DashboardScreen() {
         return;
       }
       const fresh = await getDashboardData(db, ownerId);
-      Animated.sequence([
-        Animated.timing(fadeAnim, { toValue: 0.6, duration: 100, useNativeDriver: true }),
-        Animated.timing(fadeAnim, { toValue: 1, duration: 220, useNativeDriver: true }),
-      ]).start();
+      if (!reduceMotion) {
+        contentOpacity.set(
+          withSequence(
+            withTiming(0.88, {
+              duration: 90,
+              easing: refreshEaseOut,
+              reduceMotion: ReduceMotion.System,
+            }),
+            withTiming(1, {
+              duration: 160,
+              easing: refreshEaseOut,
+              reduceMotion: ReduceMotion.System,
+            }),
+          ),
+        );
+      }
       setData(fresh);
     } finally {
       setRefreshing(false);
     }
-  }, [db, businessId, session, fadeAnim]);
+  }, [db, businessId, session, reduceMotion, contentOpacity]);
 
   /* eslint-disable react-hooks/set-state-in-effect -- load() is async; setState runs after await */
   useEffect(() => { void load(); }, [load, revision]);
@@ -184,7 +191,7 @@ export function DashboardScreen() {
         <RefreshControl refreshing={refreshing} onRefresh={load} tintColor={colors.purple} />
       }
     >
-      <Animated.View style={{ opacity: fadeAnim }} className="gap-4 px-4 pb-10 pt-3">
+      <Animated.View style={contentAnimatedStyle} className="gap-4 px-4 pb-10 pt-3">
 
         {/* ── Header ── */}
         <View className="flex-row items-center gap-3 pt-1">
@@ -195,24 +202,25 @@ export function DashboardScreen() {
             <AppText variant="heading" color={colors.text} style={{ fontSize: 16 }} numberOfLines={1}>
               {greeting}, {firstName}!
             </AppText>
-            <AppText variant="small" color={colors.secondary} style={{ fontSize: 11 }}>{dayLabel}</AppText>
+            <AppText variant="small" color={colors.secondary} style={{ fontSize: 12 }}>{dayLabel}</AppText>
           </View>
           {/* Online / Offline pill */}
           <View className={`flex-row items-center gap-1.5 rounded-full px-3 py-1.5 ${online ? 'bg-success/10' : 'bg-warning/10'}`}>
             <View className={`h-2 w-2 rounded-full ${online ? 'bg-success' : 'bg-warning'}`} />
-            <AppText variant="small" color={online ? colors.success : colors.warning} style={{ fontSize: 10 }}>
+            <AppText variant="small" color={online ? colors.success : colors.warning} style={{ fontSize: 11 }}>
               {online ? 'Online' : 'Offline'}
             </AppText>
           </View>
         </View>
 
         {/* ── Hero Revenue Card ── */}
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel="Open daily sales summary"
+        <PressableCard
+          accessibilityLabel="Open today's sales summary"
           onPress={() => router.push("/sales/daily-summary")}
-          className="relative overflow-hidden rounded-3xl bg-brand-deep px-5 pb-4 pt-5 shadow-lg shadow-brand-deep active:opacity-90"
+          className="w-full"
         >
+          {() => (
+          <View className="relative overflow-hidden rounded-3xl bg-brand-deep px-5 pb-5 pt-5 shadow-lg shadow-brand-deep">
           {/* Quiet concentric brand motif, kept behind the card content. */}
           <View pointerEvents="none" className="absolute -right-10 -top-14 h-48 w-48 rounded-full border-8 border-white/5" />
           <View pointerEvents="none" className="absolute right-2 top-5 h-28 w-28 rounded-full border-2 border-gold/20" />
@@ -222,13 +230,15 @@ export function DashboardScreen() {
           <View className="mb-2 flex-row items-center justify-between">
             <View className="flex-row items-center gap-1.5">
               <ChartNoAxesColumnIncreasing size={15} color={colors.gold} />
-              <AppText variant="small" color={colors.surface} style={{ fontSize: 10, letterSpacing: 1 }}>
-                {`TODAY'S REVENUE`}
+              <AppText variant="small" color={colors.surface} style={{ fontSize: 11, letterSpacing: 1 }}>
+                {`TODAY'S SALES`}
               </AppText>
             </View>
             <View className="flex-row items-center gap-1 rounded-full bg-gold/20 px-2.5 py-1">
               <Sparkles size={10} color={colors.gold} />
-              <AppText variant="small" color={colors.gold} style={{ fontSize: 10 }}>Keep it up!</AppText>
+              <AppText variant="small" color={colors.gold} style={{ fontSize: 10 }}>
+                {data.salesTodayCents > 0 ? 'Great momentum' : 'Ready when you are'}
+              </AppText>
             </View>
           </View>
 
@@ -237,17 +247,22 @@ export function DashboardScreen() {
 
           {/* Progress bar */}
           <View className="mb-1 mt-3 gap-2">
-            <View className="h-1.5 overflow-hidden rounded-full bg-white/15">
-              <View
-                className="h-full rounded-full bg-gold"
-                style={{ width: `${progressPct}%` }}
+            <View className="relative h-2 overflow-hidden rounded-full bg-white/15">
+              <Animated.View
+                className="absolute left-0 top-0 h-full rounded-full bg-gold"
+                style={{
+                  width: `${progressPct}%`,
+                  transitionProperty: 'width',
+                  transitionDuration: reduceMotion ? 0 : 220,
+                  transitionTimingFunction: pressEaseOut,
+                }}
               />
             </View>
             <View className="flex-row items-center justify-between">
               <DiffChip label={diff.label} positive={diff.positive} />
               {data.salesYesterdayCents > 0 ? (
-                <AppText variant="small" color={colors.lavender} style={{ fontSize: 10 }}>
-                  Yesterday {formatMoney(data.salesYesterdayCents)}
+                <AppText variant="small" color={colors.lavender} style={{ fontSize: 11 }}>
+                  Previous day · {formatMoney(data.salesYesterdayCents)}
                 </AppText>
               ) : null}
             </View>
@@ -259,7 +274,7 @@ export function DashboardScreen() {
           {/* Footer */}
           <View className="flex-row items-center justify-between">
             <View className="flex-row items-baseline gap-1.5">
-              <AppText variant="amount" color={colors.surface} style={{ fontSize: 22, lineHeight: 26 }}>
+              <AppText variant="amount" color={colors.surface} style={{ fontSize: 23, lineHeight: 28 }}>
                 {data.salesTodayCount}
               </AppText>
               <AppText variant="small" color={colors.lavender} style={{ fontSize: 11 }}>
@@ -275,12 +290,14 @@ export function DashboardScreen() {
               </View>
             ) : null}
           </View>
-        </Pressable>
+          </View>
+          )}
+        </PressableCard>
 
         {/* ── Today's Breakdown ── */}
         <View className="gap-2.5">
-          <AppText variant="small" color={colors.secondary} style={{ fontSize: 10, letterSpacing: 1, textTransform: 'uppercase' }}>
-            Today&apos;s Breakdown
+          <AppText variant="heading" color={colors.text} style={{ fontSize: 14 }}>
+            Today at a glance
           </AppText>
           <View className="flex-row gap-2.5">
             <MetricCard
@@ -331,16 +348,16 @@ export function DashboardScreen() {
 
         {/* ── Alerts ── */}
         <View className="gap-2.5">
-          <AppText variant="small" color={colors.secondary} style={{ fontSize: 10, letterSpacing: 1, textTransform: 'uppercase' }}>
-            Alerts
+          <AppText variant="heading" color={colors.text} style={{ fontSize: 14 }}>
+            Stock alert
           </AppText>
           <StockAlertRow count={data.lowStockCount} />
         </View>
 
         {/* ── Quick Actions ── */}
         <View className="gap-2.5">
-          <AppText variant="small" color={colors.secondary} style={{ fontSize: 10, letterSpacing: 1, textTransform: 'uppercase' }}>
-            Quick Actions
+          <AppText variant="heading" color={colors.text} style={{ fontSize: 14 }}>
+            Quick actions
           </AppText>
           <View className="flex-row gap-2.5">
             <QuickAction
@@ -382,11 +399,47 @@ export function DashboardScreen() {
 // ─────────────────────────────────────────────────────────────────────────────
 
 function HeroAmount({ cents }: { cents: number }) {
-  const displayed = useCountUp(cents);
   return (
     <AppText variant="amount" color={colors.surface} style={{ fontSize: 40, lineHeight: 46, letterSpacing: -1 }}>
-      {formatMoney(displayed)}
+      {formatMoney(cents)}
     </AppText>
+  );
+}
+
+function PressableCard({
+  accessibilityLabel,
+  className,
+  onPress,
+  children,
+}: {
+  accessibilityLabel: string;
+  className: string;
+  onPress: () => void;
+  children: (pressed: boolean) => ReactNode;
+}) {
+  const reduceMotion = useReducedMotion();
+
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={accessibilityLabel}
+      onPress={onPress}
+      className={className}
+    >
+      {({ pressed }) => (
+        <Animated.View
+          style={{
+            alignSelf: 'stretch',
+            transform: [{ scale: pressed && !reduceMotion ? 0.985 : 1 }],
+            transitionProperty: 'transform',
+            transitionDuration: 120,
+            transitionTimingFunction: pressEaseOut,
+          }}
+        >
+          {children(pressed)}
+        </Animated.View>
+      )}
+    </Pressable>
   );
 }
 
@@ -417,7 +470,7 @@ function MetricCard({
 }) {
   const inner = (pressed = false) => (
     <View
-      className={`relative min-h-[100px] flex-1 gap-1 overflow-hidden rounded-2xl border border-line bg-surface px-3.5 py-3 shadow-sm ${pressed ? 'bg-brand-tint/40' : ''}`}
+      className={`relative min-h-[112px] flex-1 gap-1.5 overflow-hidden rounded-2xl border border-line bg-surface px-3.5 py-3.5 shadow-sm ${pressed ? 'bg-brand-tint/40' : ''}`}
     >
       <View pointerEvents="none" className="absolute -bottom-7 -right-5 h-16 w-16 rounded-full border-8 border-brand-tint/60" />
       <View pointerEvents="none" className="absolute bottom-3 right-3 h-1.5 w-1.5 rounded-full bg-gold/70" />
@@ -433,19 +486,19 @@ function MetricCard({
         variant="amount"
         color={valueDanger ? colors.danger : colors.text}
         numberOfLines={1}
-        style={{ fontSize: 19, lineHeight: 23 }}
+        style={{ fontSize: 18, lineHeight: 23 }}
       >
         {value}
       </AppText>
       {/* Title */}
-      <AppText variant="small" color={colors.secondary} style={{ fontSize: 10 }} numberOfLines={1}>
+      <AppText variant="small" color={colors.secondary} style={{ fontSize: 12, lineHeight: 16 }} numberOfLines={2}>
         {title}
       </AppText>
       {/* Detail */}
       <AppText
         variant="small"
         color={valueDanger ? colors.danger : colors.secondary}
-        style={{ fontSize: 10, lineHeight: 13 }}
+        style={{ fontSize: 11, lineHeight: 15 }}
         numberOfLines={1}
       >
         {detail}
@@ -455,13 +508,13 @@ function MetricCard({
 
   if (onPress) {
     return (
-      <Pressable
-        accessibilityRole="button"
+      <PressableCard
+        accessibilityLabel={`${title}: ${value}. ${detail}`}
         onPress={onPress}
         className="min-w-0 flex-1"
       >
-        {({ pressed }) => inner(pressed)}
-      </Pressable>
+        {(pressed) => inner(pressed)}
+      </PressableCard>
     );
   }
   return <View className="min-w-0 flex-1">{inner()}</View>;
@@ -470,18 +523,21 @@ function MetricCard({
 function StockAlertRow({ count }: { count: number }) {
   const ok = count === 0;
   return (
-    <Pressable
-      accessibilityRole="button"
+    <PressableCard
       accessibilityLabel={ok ? 'Stock looks good. Open inventory' : `${count} low stock items. Open inventory`}
       onPress={() => router.push('/(tabs)/inventory')}
-      className={`flex-row items-center gap-3 overflow-hidden rounded-2xl border bg-surface shadow-sm active:opacity-80 ${ok ? 'border-success/20' : 'border-warning/30'}`}
+      className="w-full"
     >
+      {(pressed) => (
+      <View className={`flex-row items-center gap-3 overflow-hidden rounded-2xl border bg-surface shadow-sm ${pressed ? 'bg-brand-tint/30' : ''} ${ok ? 'border-success/20' : 'border-warning/30'}`}>
       {/* Coloured left stripe */}
       <View className={`w-1 self-stretch ${ok ? 'bg-success' : 'bg-warning'}`} />
 
       {/* Icon */}
       <View className={`h-10 w-10 items-center justify-center rounded-xl ${ok ? 'bg-success/10' : 'bg-warning/10'}`}>
-        <TriangleAlert size={18} color={ok ? colors.success : colors.warning} />
+        {ok
+          ? <CircleCheck size={18} color={colors.success} />
+          : <TriangleAlert size={18} color={colors.warning} />}
       </View>
 
       {/* Text */}
@@ -505,7 +561,9 @@ function StockAlertRow({ count }: { count: number }) {
 
       <ChevronRight size={17} color={colors.secondary} />
       <View className="w-3" />
-    </Pressable>
+      </View>
+      )}
+    </PressableCard>
   );
 }
 
@@ -527,17 +585,21 @@ function QuickAction({
   const foreground = tone === 'primary' ? colors.surface : colors.deepPurple;
 
   return (
-    <Pressable
-      accessibilityRole="button"
+    <PressableCard
+      accessibilityLabel={title}
       onPress={onPress}
-      className={`min-h-24 min-w-0 flex-1 items-center justify-center gap-2 rounded-2xl border px-3 py-3 shadow-sm active:opacity-75 ${tileClass}`}
+      className="min-h-24 min-w-0 flex-1"
     >
+      {(pressed) => (
+      <View className={`min-h-24 flex-1 items-center justify-center gap-2 rounded-2xl border px-3 py-3 shadow-sm ${pressed ? 'opacity-90' : ''} ${tileClass}`}>
       <View className={`h-10 w-10 items-center justify-center rounded-xl ${tone === 'primary' ? 'bg-white/15' : 'bg-white/70'}`}>
         {icon}
       </View>
       <AppText variant="label" color={foreground} style={{ fontSize: 12 }}>
         {title}
       </AppText>
-    </Pressable>
+      </View>
+      )}
+    </PressableCard>
   );
 }

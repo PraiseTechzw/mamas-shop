@@ -102,6 +102,20 @@ test('pull materializes a remote customer exactly once', async () => {
   expect(count!.count).toBe(1);
 });
 
+test('serializes a local product write with incoming remote changes', async () => {
+  const { db, raw } = await openMigratedDatabase();
+  mockServer.events.push({ idempotency_key: 'k-cust-concurrent', owner_id: OWNER, entity_type: 'customer', entity_id: 'cust-concurrent', operation: 'customer.create', payload: { id: 'cust-concurrent', name: 'Rudo' }, occurred_at: '2026-10-15T05:00:00.000Z', received_at: '2026-10-15T05:00:00.000Z' });
+
+  const [productId, result] = await Promise.all([
+    addProduct(db, OWNER, { name: 'Rice', sku: 'R-1', category: 'Grocery', unit: 'kg', priceCents: 500, costCents: 350, opening: 6, reorder: 1 }),
+    syncOutbox(db, OWNER, true),
+  ]);
+
+  expect(result.downloaded).toBe(1);
+  await expect(raw.getFirstAsync('SELECT id FROM products WHERE id = ?', productId)).resolves.not.toBeNull();
+  await expect(raw.getFirstAsync('SELECT id FROM customers WHERE id = ?', 'cust-concurrent')).resolves.not.toBeNull();
+});
+
 test('an unusable remote sale becomes a visible conflict and is applied after its dependency arrives', async () => {
   const { db, raw } = await openMigratedDatabase();
   mockServer.events.push({ idempotency_key: 'k-sale-ghost', owner_id: OWNER, entity_type: 'sale', entity_id: 'sale-ghost', operation: 'sale.create', payload: { id: 'sale-ghost', receipt_number: 'MS-G', total_cents: 400, paid_cents: 400, balance_cents: 0, status: 'PAID', items: [{ id: 'si-g', product_id: 'later-product', name: 'Later', quantity: 1, unit_price_cents: 400, line_total_cents: 400, unit_cost_cents: 300 }] }, occurred_at: '2026-10-15T06:00:00.000Z', received_at: '2026-10-15T06:00:00.000Z' });
