@@ -75,7 +75,20 @@ export function AuthProvider({ children }: PropsWithChildren) {
         setBusinessLoading(true);
       } else {
         let restored = false;
-        if (error) {
+        let shouldRestoreOffline = Boolean(error);
+        if (!error) {
+          try {
+            shouldRestoreOffline = (await checkConnection()) === 'offline';
+          } catch {
+            shouldRestoreOffline = false;
+          }
+          if (!active) return;
+          if (authEventVersion.current !== requestVersion) {
+            setAuthLoading(false);
+            return;
+          }
+        }
+        if (shouldRestoreOffline) {
           try {
             restored = await restoreOfflineAccess(() => active && authEventVersion.current === requestVersion);
           } catch (restoreError) {
@@ -86,7 +99,7 @@ export function AuthProvider({ children }: PropsWithChildren) {
             setAuthLoading(false);
             return;
           }
-          if (!restored) console.warn('[auth] Could not restore a saved session', error);
+          if (!restored && error) console.warn('[auth] Could not restore a saved session', error);
         }
         if (!restored) {
           setSession(null);

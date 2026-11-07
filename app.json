@@ -16,7 +16,7 @@
       "softwareKeyboardLayoutMode": "pan",
       "adaptiveIcon": {
         "backgroundColor": "#FCFDFF",
-        "foregroundImage": "./assets/images/brand/android-foreground.png",
+        "foregroundImage": "./assets/images/source/icon.png",
         "monochromeImage": "./assets/images/brand/android-monochrome.png"
       },
       "predictiveBackGestureEnabled": true,

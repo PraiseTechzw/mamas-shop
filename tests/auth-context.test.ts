@@ -11,6 +11,7 @@ let mockDatabase: SQLiteDatabase;
 let mockAuthEventListener: AuthEventListener | null = null;
 const mockGetSession = jest.fn();
 const mockCheckConnection = jest.fn().mockResolvedValue('offline');
+const mockRpc = jest.fn().mockResolvedValue({ data: null, error: null });
 const mockOnAuthStateChange = jest.fn((listener: AuthEventListener) => {
   mockAuthEventListener = listener;
   return { data: { subscription: { unsubscribe: jest.fn() } } };
@@ -26,7 +27,7 @@ jest.doMock('@/lib/supabase', () => ({
       getSession: mockGetSession,
       onAuthStateChange: mockOnAuthStateChange,
     },
-    rpc: jest.fn(),
+    rpc: mockRpc,
   },
 }));
 jest.doMock('@/lib/format', () => ({ setAppCurrency: jest.fn() }));
@@ -74,6 +75,7 @@ function prepareTest() {
   mockAuthEventListener = null;
   mockGetSession.mockReset();
   mockCheckConnection.mockReset().mockResolvedValue('offline');
+  mockRpc.mockReset().mockResolvedValue({ data: null, error: null });
   mockOnAuthStateChange.mockClear();
   observedAuth = null;
 }
@@ -98,6 +100,85 @@ test('restores a saved shop when Supabase cannot restore the persisted session',
     businessId: 'saved-shop',
     offlineAccess: true,
     session: null,
+    loading: false,
+  });
+
+  await unmount(root);
+  raw.close();
+});
+
+test('restores a saved shop when there is no session and the device is offline', async () => {
+  prepareTest();
+  const { db, raw } = await seedSavedShop();
+  mockDatabase = db;
+  mockGetSession.mockResolvedValue({
+    data: { session: null },
+    error: null,
+  });
+  mockCheckConnection.mockResolvedValue('offline');
+
+  const root = await mountAuthProvider();
+
+  expect(observedAuth).toMatchObject({
+    userId: 'saved-account',
+    businessId: 'saved-shop',
+    offlineAccess: true,
+    session: null,
+    loading: false,
+  });
+
+  await unmount(root);
+  raw.close();
+});
+
+test('does not restore a saved shop when there is no session but the device is online', async () => {
+  prepareTest();
+  const { db, raw } = await seedSavedShop();
+  mockDatabase = db;
+  mockGetSession.mockResolvedValue({
+    data: { session: null },
+    error: null,
+  });
+  mockCheckConnection.mockResolvedValue('online');
+
+  const root = await mountAuthProvider();
+
+  expect(observedAuth).toMatchObject({
+    userId: null,
+    businessId: null,
+    offlineAccess: false,
+    session: null,
+    loading: false,
+  });
+
+  await unmount(root);
+  raw.close();
+});
+
+test('keeps a sign-in event received while checking offline access', async () => {
+  prepareTest();
+  const { db, raw } = await seedSavedShop();
+  mockDatabase = db;
+  mockGetSession.mockResolvedValue({
+    data: { session: null },
+    error: null,
+  });
+  let resolveConnection!: (connection: 'online' | 'offline' | 'checking') => void;
+  mockCheckConnection.mockReturnValue(new Promise((resolve) => { resolveConnection = resolve; }));
+
+  const root = await mountAuthProvider();
+  const session = { user: { id: 'newly-signed-in' } };
+
+  await act(async () => {
+    mockAuthEventListener?.('SIGNED_IN', session);
+    resolveConnection('online');
+    await new Promise((resolve) => setTimeout(resolve, 0));
+  });
+
+  expect(observedAuth).toMatchObject({
+    userId: 'newly-signed-in',
+    offlineAccess: false,
+    session,
     loading: false,
   });
 

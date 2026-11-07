@@ -64,7 +64,6 @@ function WelcomeBenefits() {
   const benefits = [
     { label: 'Sell &\ntrack stock', Icon: Package, color: colors.purple },
     { label: 'Customer\ncredit', Icon: UsersRound, color: colors.gold },
-    { label: 'Works\noffline', Icon: WifiOff, color: colors.purple },
     { label: 'Syncs when\nyou reconnect', Icon: RefreshCw, color: colors.gold },
   ];
   return <View style={styles.benefits}>{benefits.map(({ label, Icon, color }) => <View key={label} style={styles.benefit}>
@@ -73,15 +72,17 @@ function WelcomeBenefits() {
   </View>)}</View>;
 }
 
-function OfflineFirstNotice({ firstSignIn = false }: { firstSignIn?: boolean }) {
+function OfflineFirstNotice({ firstSignIn = false, offlineAccess = false }: { firstSignIn?: boolean; offlineAccess?: boolean }) {
   return <View style={styles.offlineNotice}>
     <View style={styles.offlineNoticeIcon}><WifiOff size={18} color={colors.deepPurple} /></View>
     <View style={styles.offlineNoticeCopy}>
-      <AppText variant="label" color={colors.deepPurple}>Your shop works offline</AppText>
+      <AppText variant="label" color={colors.deepPurple}>{offlineAccess ? 'Saved shop available on this device' : 'Sign-in requires internet'}</AppText>
       <AppText variant="small" color={colors.secondary} style={styles.offlineNoticeDescription}>
-        {firstSignIn
-          ? 'First sign-in needs internet. After setup, sales and stock stay on this phone and sync when you reconnect.'
-          : 'Sign in once while connected. Saved sales, stock, and customer credit stay on this phone when you are offline.'}
+        {offlineAccess
+          ? 'Email and password sign-in requires internet. You can continue to your saved shop on this device.'
+          : firstSignIn
+          ? 'Connect to the internet to create an account and sign in for the first time.'
+          : 'Connect to the internet to sign in to your account.'}
       </AppText>
     </View>
   </View>;
@@ -94,7 +95,6 @@ export function WelcomeScreen() {
       <AppText variant="small" color={colors.secondary} style={styles.welcomePromise}>Sell, track stock, and manage customer credit—all in one simple shop app.</AppText>
       <WelcomeBenefits />
       <StorefrontHero />
-      <OfflineFirstNotice />
       <View style={styles.welcomeActions}>
         <AuthButton label="Get Started" icon={<ArrowRight size={21} color={colors.surface} />} onPress={() => router.push('/(auth)/login')} />
         <AuthButton label="Log In" variant="secondary" onPress={() => router.push('/(auth)/login')} />
@@ -106,7 +106,7 @@ export function WelcomeScreen() {
 }
 
 export function LoginScreen() {
-  const { configured } = useAuth();
+  const { configured, offlineAccess } = useAuth();
   const [creating, setCreating] = useState(false);
   // Keep keystrokes in refs so typing does not rerender the whole auth screen
   // while Android's native keyboard is editing the focused TextInput.
@@ -214,7 +214,8 @@ export function LoginScreen() {
           <AppText variant="title" style={styles.loginTitle}>{creating ? 'Create your account' : 'Welcome back!'}</AppText>
           <AppText color={colors.secondary} style={styles.loginSubtitle}>{creating ? 'Set up your sign-in to manage your business.' : 'Sign in to continue managing your business.'}</AppText>
         </View>
-        <OfflineFirstNotice firstSignIn />
+        <OfflineFirstNotice firstSignIn={!offlineAccess} offlineAccess={offlineAccess} />
+        {offlineAccess ? <AuthButton label="Continue to saved shop" variant="secondary" icon={<WifiOff size={18} color={colors.deepPurple} />} onPress={() => router.replace('/(tabs)')} /> : null}
         <View style={styles.form}>
           {creating ? <Field key="full-name" label="Your name" placeholder="e.g. Mama Moyo" icon={<UserRound size={18} color={colors.secondary} />} focusAccent inputRef={fullNameInput} onFocus={() => focusField(fullNameInput.current)} autoCapitalize="words" defaultValue="" onChangeText={(value) => { fullName.current = value; }} onSubmitEditing={() => emailInput.current?.focus()} returnKeyType="next" submitBehavior="submit" /> : null}
           <Field key="email" label="Email address" placeholder="you@example.com" icon={<Mail size={18} color={colors.secondary} />} focusAccent inputRef={emailInput} onFocus={() => focusField(emailInput.current)} keyboardType="email-address" autoCapitalize="none" autoCorrect={false} defaultValue="" onChangeText={(value) => { email.current = value; }} onSubmitEditing={() => passwordInput.current?.focus()} returnKeyType="next" submitBehavior="submit" />
