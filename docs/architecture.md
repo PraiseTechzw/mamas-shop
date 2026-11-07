@@ -34,6 +34,12 @@ Use stable operation IDs and server-side idempotency so a retry cannot create a 
 
 The retained server membership migrations support one-use, expiring business invitations for a future staff-access release. New cloud events record the authenticated uploader in `actor_id`; existing owner events are backfilled to the owner. Apply all `supabase/migrations/` files before enabling cloud sync.
 
+## App updates
+
+EAS Update serves JavaScript and asset changes to installed Android and iOS builds that have `expo-updates` enabled and a matching runtime version. Build profiles use separate `development`, `preview`, and `production` channels. Native code, permissions, and SDK changes still require a new app build.
+
+The app checks for compatible updates on launch and applies downloaded updates on the next launch. After an update is running, `WhatsNewNotice` shows the notes in `src/features/updates/release-notes.ts` once for that update ID. Update that file with concise user-facing notes whenever publishing a user-facing OTA release. Existing installs need one new build with `expo-updates` before they can receive OTA releases.
+
 ## Code ownership
 
 - `src/app/`: navigation and thin route entry points.
