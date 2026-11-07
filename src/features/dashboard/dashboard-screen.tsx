@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState, type ReactNode } from 'react';
+import { useCallback, useState, type ReactNode } from 'react';
 import {
   Pressable,
   RefreshControl,
@@ -15,7 +15,7 @@ import Animated, {
   withSequence,
   withTiming,
 } from 'react-native-reanimated';
-import { router } from 'expo-router';
+import { router, useFocusEffect } from 'expo-router';
 import { useSQLiteContext } from 'expo-sqlite';
 import {
   ArrowDown,
@@ -39,7 +39,7 @@ import {
 import { colors } from '@/constants/theme';
 import { formatMoney } from '@/lib/format';
 import { getDashboardData, type DashboardData } from '@/db/repositories/dashboard';
-import { needsShopSetup } from '@/db/repositories/settings';
+import { getShopSettings, needsShopSetup } from '@/db/repositories/settings';
 import { useAuth } from '@/features/auth/auth-context';
 import { AppText } from '@/components/ui/primitives';
 import { useSyncStatus } from '@/features/sync/sync-context';
@@ -147,7 +147,14 @@ export function DashboardScreen() {
         router.replace('/setup');
         return;
       }
-      const fresh = await getDashboardData(db, ownerId);
+      const [dashboard, settings] = await Promise.all([
+        getDashboardData(db, ownerId),
+        getShopSettings(db, ownerId),
+      ]);
+      const fresh = {
+        ...dashboard,
+        lowStockCount: settings.low_stock_alerts ? dashboard.lowStockCount : 0,
+      };
       if (!reduceMotion) {
         contentOpacity.set(
           withSequence(
@@ -170,9 +177,11 @@ export function DashboardScreen() {
     }
   }, [db, businessId, session, reduceMotion, contentOpacity]);
 
-  /* eslint-disable react-hooks/set-state-in-effect -- load() is async; setState runs after await */
-  useEffect(() => { void load(); }, [load, revision]);
-  /* eslint-enable react-hooks/set-state-in-effect */
+  // Reload after synced or local writes while this tab is focused.
+  useFocusEffect(useCallback(() => {
+    void revision;
+    void load();
+  }, [load, revision]));
 
   const diff = salesDiff(data.salesTodayCents, data.salesYesterdayCents);
   const progressPct =
@@ -381,6 +390,7 @@ export function DashboardScreen() {
               icon={<RefreshCcw size={16} color={colors.warning} />}
               iconBg="bg-warning/10"
               valueDanger={data.changeOwedOpenCents > 0}
+              onPress={() => router.push('/sales/change-owed')}
             />
           </View>
         </View>

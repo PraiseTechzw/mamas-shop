@@ -547,16 +547,19 @@ export function HelpAndSupportScreen() {
               icon={ShoppingBag}
               title="Sales"
               subtitle="Record a sale and take payment"
+              onPress={() => router.push("/(tabs)/sales")}
             />
             <HelpTopic
               icon={Package}
               title="Inventory"
               subtitle="Receive stock and adjust quantities"
+              onPress={() => router.push("/(tabs)/inventory")}
             />
             <HelpTopic
               icon={Users}
               title="Customer credit"
               subtitle="Manage balances and repayments"
+              onPress={() => router.push("/(tabs)/credit")}
               last
             />
           </View>
@@ -775,15 +778,19 @@ function HelpTopic({
   icon: Icon,
   title,
   subtitle,
+  onPress,
   last = false,
 }: {
   icon: typeof ShoppingBag;
   title: string;
   subtitle: string;
+  onPress: () => void;
   last?: boolean;
 }) {
   return (
-    <View
+    <Pressable
+      accessibilityRole="button"
+      onPress={onPress}
       className={`flex-row items-center gap-3 px-4 py-3 ${last ? "" : "border-b border-line"}`}
     >
       <View className="h-10 w-10 items-center justify-center rounded-xl bg-brand-tint">
@@ -795,7 +802,7 @@ function HelpTopic({
           {subtitle}
         </AppText>
       </View>
-    </View>
+    </Pressable>
   );
 }
 

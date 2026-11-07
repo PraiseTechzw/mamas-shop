@@ -2,18 +2,37 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { Alert, Image, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { useSQLiteContext } from 'expo-sqlite';
-import { Apple, ArrowDownToLine, Beef, Boxes, ChevronRight, Cookie, Droplets, Ellipsis, ImagePlus, Pencil, Plus, Search, Smartphone, CupSoda, Zap, Bell, Package, Tag, Trash2 } from 'lucide-react-native';
+import { Apple, ArrowDownToLine, Beef, Boxes, ChevronRight, Cookie, Droplets, Ellipsis, ImagePlus, Pencil, Plus, Search, Smartphone, CupSoda, Zap, Bell, Package, Tag, Trash2, X, MapPin } from 'lucide-react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { File, Paths } from 'expo-file-system';
 import { useAuth } from '@/features/auth/auth-context';
 import { useSyncStatus } from '@/features/sync/sync-context';
-import { addProduct, adjustStock, deleteProduct, getLocationBalance, getProduct, listInventory, listLocations, listMovements, listProductBalances, receiveStock, updateProduct } from '@/db/repositories/inventory';
+import { addLocation, addProduct, adjustStock, deleteProduct, getLocationBalance, getProduct, listInventory, listLocations, listMovements, listProductBalances, receiveStock, transferStock, updateProduct } from '@/db/repositories/inventory';
 import type { InventoryLocation, Product, StockMovement } from '@/db/schema';
 import { colors, radius } from '@/constants/theme';
 import { imageSource, productImage } from '@/lib/product-images';
 import { formatDateTime, formatMoney, toCents } from '@/lib/format';
 import { AppText, Card, Field, Page, PrimaryButton, SecondaryButton, SectionTitle } from '@/components/ui/primitives';
 import { IllustratedEmptyState } from '@/components/feedback/illustrated-empty-state';
+
+const stockActionStyles = StyleSheet.create({
+ button: {
+  flex: 1,
+  minWidth: 0,
+  minHeight: 68,
+  flexDirection: 'column',
+  alignItems: 'center',
+  justifyContent: 'center',
+  gap: 5,
+  paddingHorizontal: 4,
+  paddingVertical: 8,
+  borderWidth: 1,
+  borderColor: colors.lavender,
+  borderRadius: radius.button,
+  backgroundColor: colors.lavenderTint,
+ },
+ label: { textAlign: 'center', lineHeight: 14 },
+});
 
 const productCategories = [
  {label:'Maheu',value:'Traditional Drinks & Mahero',icon:CupSoda},
@@ -91,7 +110,13 @@ export function InventoryScreen() {
   return (category==='All'||inventoryCategory(item)===category)&&(!query||`${item.name} ${item.sku??''} ${item.category}`.toLowerCase().includes(query));
  });
  return <Page title="Inventory" right={<Pressable accessibilityRole="button" accessibilityLabel="Add product" onPress={()=>router.push('/inventory/add')} style={styles.add}><Plus stroke={colors.surface} size={20}/></Pressable>}>
-  <Field label="" accessibilityLabel="Search inventory" icon={<Search stroke={colors.secondary} size={18}/>} value={search} onChangeText={setSearch} placeholder="Search products…" returnKeyType="search" />
+  <Pressable accessibilityRole="button" onPress={()=>router.push('/inventory/locations')} className="min-h-10 flex-row items-center justify-center gap-2 rounded-xl border border-line bg-surface active:bg-brand-tint">
+   <Package size={16} color={colors.deepPurple}/><AppText variant="label" color={colors.deepPurple}>Manage shop locations</AppText><ChevronRight size={16} color={colors.secondary}/>
+  </Pressable>
+  <View className="flex-row items-center gap-2">
+   <Field label="" containerStyle={{flex:1}} accessibilityLabel="Search inventory" icon={<Search stroke={colors.secondary} size={18}/>} value={search} onChangeText={setSearch} placeholder="Search products…" returnKeyType="search" />
+   {search.length>0?<Pressable accessibilityRole="button" accessibilityLabel="Clear inventory search" onPress={()=>setSearch('')} hitSlop={8} className="h-12 w-12 items-center justify-center rounded-xl border border-line bg-surface active:bg-brand-tint"><X size={18} color={colors.secondary}/></Pressable>:null}
+  </View>
   <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.categoryFilters}>{categories.map((item)=>{const Icon=categoryFilterIcons[item]??Ellipsis;const selected=category===item;return <Pressable key={item} accessibilityRole="button" accessibilityState={{selected}} onPress={()=>setCategory(item)} style={[styles.categoryFilter,selected&&styles.categoryFilterActive]}><Icon size={14} stroke={selected?colors.surface:colors.secondary}/><AppText variant="small" color={selected?colors.surface:colors.secondary}>{item}</AppText></Pressable>;})}</ScrollView>
   {visible.length>0?visible.map((item,index)=>{
    const stockState=item.stock_quantity<=0?'out':item.stock_quantity<=item.reorder_level?'low':'in';
@@ -179,24 +204,25 @@ export function ProductDetailScreen(){
    <View style={styles.detailSectionHeader}><View style={styles.detailSectionTitle}><Package size={17} stroke={colors.deepPurple}/><AppText variant="label">Stock quantity</AppText></View><AppText variant="label" color={colors.deepPurple}>{product.stock_quantity} {product.unit}</AppText></View>
    {locations.map((location)=><View key={location.id} style={styles.locationBalance}><AppText variant="small" color={colors.secondary}>{location.name}</AppText><AppText variant="label">{location.quantity} {product.unit}</AppText></View>)}
    <View style={styles.detailStockActions}>
-    <Pressable accessibilityRole="button" onPress={()=>router.push({pathname:'/inventory/receive-stock',params:{productId:id}})} style={styles.detailStockAction}>
-     <ArrowDownToLine size={16} stroke={colors.deepPurple}/><AppText variant="small" color={colors.deepPurple} numberOfLines={1}>Receive stock</AppText>
+    <Pressable accessibilityRole="button" accessibilityLabel="Receive stock" onPress={()=>router.push({pathname:'/inventory/receive-stock',params:{productId:id}})} style={stockActionStyles.button}>
+     <ArrowDownToLine size={16} stroke={colors.deepPurple}/><AppText variant="small" color={colors.deepPurple} numberOfLines={2} style={stockActionStyles.label}>Receive stock</AppText>
     </Pressable>
-    <Pressable accessibilityRole="button" onPress={()=>router.push({pathname:'/inventory/adjust-stock',params:{productId:id}})} style={styles.detailStockAction}>
-     <Pencil size={15} stroke={colors.deepPurple}/><AppText variant="small" color={colors.deepPurple} numberOfLines={1}>Adjust count</AppText>
+    <Pressable accessibilityRole="button" accessibilityLabel="Adjust stock count" onPress={()=>router.push({pathname:'/inventory/adjust-stock',params:{productId:id}})} style={stockActionStyles.button}>
+     <Pencil size={15} stroke={colors.deepPurple}/><AppText variant="small" color={colors.deepPurple} numberOfLines={2} style={stockActionStyles.label}>Adjust count</AppText>
     </Pressable>
-   </View>
+     <Pressable accessibilityRole="button" accessibilityLabel="Transfer stock" onPress={()=>router.push({pathname:'/inventory/transfer-stock',params:{productId:id}})} style={stockActionStyles.button}>
+      <MapPin size={15} stroke={colors.deepPurple}/><AppText variant="small" color={colors.deepPurple} numberOfLines={2} style={stockActionStyles.label}>Transfer</AppText>
+     </Pressable>
+    </View>
   </Card>
-  <Pressable accessibilityRole="button" onPress={()=>editProduct()} style={({pressed})=>[styles.editProductButton,pressed&&styles.editProductButtonPressed]}>
-   <Pencil size={17} stroke={colors.surface}/><AppText variant="label" color={colors.surface}>Edit Product</AppText>
-  </Pressable>
+  <PrimaryButton label="Edit Product" onPress={()=>editProduct()} icon={<Pencil size={17} stroke={colors.surface}/>} />
   {canDeleteProduct?<Pressable accessibilityRole="button" accessibilityState={{disabled:deleting}} disabled={deleting} onPress={confirmDelete} className="min-h-[48px] flex-row items-center justify-center gap-2 rounded-full border border-danger/30 bg-danger/10 px-4"><Trash2 size={17} stroke={colors.danger}/><AppText variant="label" color={colors.danger}>{deleting?'Deleting…':'Delete product'}</AppText></Pressable>:null}
-  <Pressable accessibilityRole="button" onPress={()=>editProduct('stock')} style={styles.alertButton}><Bell size={17} stroke={colors.danger}/><AppText variant="label" color={colors.danger}>Set Low Stock Alert</AppText></Pressable>
-  <View style={styles.alertHint}><AppText variant="small" color={colors.secondary}>Alert when stock reaches {product.reorder_level} {product.unit}.</AppText></View>
+  <Pressable accessibilityRole="button" onPress={()=>editProduct('stock')} style={styles.alertButton}><Bell size={17} stroke={colors.danger}/><AppText variant="label" color={colors.danger}>Set Low-Stock Threshold</AppText></Pressable>
+  <View style={styles.alertHint}><AppText variant="small" color={colors.secondary}>Show an in-app low-stock warning when stock reaches {product.reorder_level} {product.unit}.</AppText></View>
   <SectionTitle action="See all" onAction={()=>router.push({pathname:'/inventory/history',params:{productId:id}})}>Recent stock activity</SectionTitle>{movements.slice(0,8).map((m)=><MovementCard key={m.id} item={m}/>)}</Page>;
 }
 
-export function StockActionScreen({mode}:{mode:'receive'|'adjust'}) {
+export function StockActionScreen({mode}:{mode:'receive'|'adjust'|'transfer'}) {
  const db=useSQLiteContext();
  const {session,businessId}=useAuth();
  const owner=businessId??session?.user.id??'';
@@ -204,16 +230,18 @@ export function StockActionScreen({mode}:{mode:'receive'|'adjust'}) {
  const productParam=Array.isArray(params.productId)?params.productId[0]:params.productId;
  const [products,setProducts]=useState<Product[]>([]);
  const [locations,setLocations]=useState<InventoryLocation[]>([]);
+ const [locationBalances,setLocationBalances]=useState<(InventoryLocation & {quantity:number})[]>([]);
  const [productId,setProductId]=useState<string>(productParam??'');
  const [quantity,setQuantity]=useState('');
  const [cost,setCost]=useState('');
  const [note,setNote]=useState('');
  const [locationId,setLocationId]=useState('');
+ const [destinationLocationId,setDestinationLocationId]=useState('');
  const [busy,setBusy]=useState(false);
  const [error,setError]=useState('');
  const [loadingData,setLoadingData]=useState(true);
  const [loadError,setLoadError]=useState(false);
- const title=mode==='receive'?'Receive stock':'Adjust stock count';
+ const title=mode==='receive'?'Receive stock':mode==='adjust'?'Adjust stock count':'Transfer stock';
 
  useEffect(()=>{
   let active=true;
@@ -223,17 +251,30 @@ export function StockActionScreen({mode}:{mode:'receive'|'adjust'}) {
    setLocations(shopLocations);
    setProductId((current)=>current||items[0]?.id||'');
    setLocationId((current)=>current||shopLocations[0]?.id||'');
+   setDestinationLocationId((current)=>current||(shopLocations.find((item)=>item.id!==shopLocations[0]?.id)?.id??''));
   }).catch(()=>{if(active)setLoadError(true);}).finally(()=>{if(active)setLoadingData(false);});
   return()=>{active=false;};
  },[db,owner]);
+ useEffect(()=>{
+  if(mode!=='transfer'||!productId)return;
+  let active=true;
+  void listProductBalances(db,owner,productId).then((balances)=>{if(active)setLocationBalances(balances);}).catch(()=>{if(active)setError('Could not load stock balances for this product.');});
+  return()=>{active=false;};
+ },[db,owner,productId,mode]);
 
  const save=async()=>{
   setError('');
   if(mode==='receive'&&!cost.trim()){setError('Enter the total amount paid for this delivery.');return;}
   if(mode==='adjust'&&!note.trim()){setError('Enter a reason for this stock adjustment.');return;}
+  if(mode==='transfer'&&(!locationId||!destinationLocationId||locationId===destinationLocationId)){setError('Choose two different shop locations.');return;}
   setBusy(true);
   try{
-   if(mode==='receive'){
+   if(mode==='transfer'){
+    await transferStock(db,owner,productId,Number(quantity),locationId,destinationLocationId,note);
+    Alert.alert('Stock transferred','The stock movement and both location balances have been updated.');
+    router.back();
+    return;
+   } else if(mode==='receive'){
     const receivedQuantity=Number(quantity);
     const unitCostCents=receivedQuantity>0?Math.round(toCents(cost)/receivedQuantity):0;
     await receiveStock(db,owner,productId,receivedQuantity,unitCostCents,note,locationId||undefined);
@@ -257,19 +298,56 @@ export function StockActionScreen({mode}:{mode:'receive'|'adjust'}) {
 
  if(loadingData)return <Page title={title} subtitle="Loading your inventory…" back><Card style={styles.loading}><AppText color={colors.secondary}>Loading products and locations…</AppText></Card></Page>;
  if(loadError)return <Page title={title} subtitle="We couldn’t load the information for this stock action." back><IllustratedEmptyState image={require('@/assets/images/shop-illustrations/inventory/stock-unavailable.png')} title="Inventory unavailable" description="Go back to Inventory and try again." action={<SecondaryButton label="Back to inventory" onPress={()=>router.replace('/(tabs)/inventory')}/>} /></Page>;
+ if(mode==='transfer'&&locations.length<2)return <Page title={title} subtitle="Set up at least two shop locations before transferring stock." back><IllustratedEmptyState image={require('@/assets/images/shop-illustrations/inventory/stock-unavailable.png')} title="Add another location" description="Transfers move stock between two locations and keep a record of both balances." action={<PrimaryButton label="Manage locations" onPress={()=>router.push('/inventory/locations')}/>} /></Page>;
  if(!products.length)return <Page title={title} subtitle="Add a product before recording stock activity." back><IllustratedEmptyState image={require('@/assets/images/shop-illustrations/inventory/empty-cart.png')} title="No products yet" description="Your inventory needs a product before you can receive or adjust stock." action={<PrimaryButton label="Add a product" onPress={()=>router.push('/inventory/add')}/>} /></Page>;
 
- return <Page title={title} subtitle={mode==='receive'?'Record a delivery and its cost.':'Enter the quantity you physically counted.'} back>
+ return <Page title={title} subtitle={mode==='receive'?'Record a delivery and its cost.':mode==='adjust'?'Enter the quantity you physically counted.':'Move stock between shop locations.'} back>
   <Card style={{gap:13}}>
    <AppText variant="label">Product</AppText>
    <View style={styles.selectWrap}>{products.map((product)=><Pressable key={product.id} accessibilityRole="button" accessibilityState={{selected:productId===product.id}} onPress={()=>setProductId(product.id)} style={[styles.selectOption,productId===product.id&&styles.selected]}><AppText variant="label" color={productId===product.id?colors.deepPurple:colors.text}>{product.name} · {product.stock_quantity} {product.unit}</AppText></Pressable>)}</View>
-   {locations.length>1?<><AppText variant="label">Shop location</AppText><View style={styles.selectWrap}>{locations.map((location)=><Pressable key={location.id} accessibilityRole="button" accessibilityState={{selected:locationId===location.id}} onPress={()=>setLocationId(location.id)} style={[styles.selectOption,locationId===location.id&&styles.selected]}><AppText variant="label">{location.name}</AppText></Pressable>)}</View></>:null}
-   <Field label={mode==='adjust'?'Counted quantity':'Quantity received'} value={quantity} onChangeText={setQuantity} placeholder="0" keyboardType="decimal-pad"/>
+   {mode==='transfer'?<><AppText variant="label">From</AppText><View style={styles.selectWrap}>{locations.map((location)=>{const balance=locationBalances.find((item)=>item.id===location.id)?.quantity??0;return <Pressable key={location.id} accessibilityRole="radio" accessibilityState={{checked:locationId===location.id}} onPress={()=>setLocationId(location.id)} style={[styles.selectOption,locationId===location.id&&styles.selected]}><AppText variant="label" color={locationId===location.id?colors.deepPurple:colors.text}>{location.name} · {balance} {products.find((item)=>item.id===productId)?.unit??'units'}</AppText></Pressable>;})}</View><AppText variant="label">To</AppText><View style={styles.selectWrap}>{locations.filter((location)=>location.id!==locationId).map((location)=><Pressable key={location.id} accessibilityRole="radio" accessibilityState={{checked:destinationLocationId===location.id}} onPress={()=>setDestinationLocationId(location.id)} style={[styles.selectOption,destinationLocationId===location.id&&styles.selected]}><AppText variant="label" color={destinationLocationId===location.id?colors.deepPurple:colors.text}>{location.name}</AppText></Pressable>)}</View></>:locations.length>1?<><AppText variant="label">Shop location</AppText><View style={styles.selectWrap}>{locations.map((location)=><Pressable key={location.id} accessibilityRole="button" accessibilityState={{selected:locationId===location.id}} onPress={()=>setLocationId(location.id)} style={[styles.selectOption,locationId===location.id&&styles.selected]}><AppText variant="label">{location.name}</AppText></Pressable>)}</View></>:null}
+   <Field label={mode==='adjust'?'Counted quantity':mode==='transfer'?'Quantity to transfer':'Quantity received'} value={quantity} onChangeText={setQuantity} placeholder="0" keyboardType="decimal-pad"/>
    {mode==='receive'?<><Field label="Total paid for this delivery" value={cost} onChangeText={setCost} placeholder="e.g. 10.00" keyboardType="decimal-pad"/>{Number(quantity)>0&&cost.trim()?<View style={styles.unitCostSummary}><AppText variant="small" color={colors.secondary}>BUYING COST PER {products.find((item)=>item.id===productId)?.unit.toUpperCase()??'ITEM'}</AppText><AppText variant="label" color={colors.deepPurple}>{formatMoney(Math.round(toCents(cost)/Number(quantity)))}</AppText><AppText variant="small" color={colors.secondary}>Total paid ÷ quantity received.</AppText></View>:null}</>:null}
    <Field label={mode==='adjust'?'Reason for adjustment':'Note (optional)'} value={note} onChangeText={setNote} placeholder={mode==='adjust'?'e.g. Damaged during storage':'Add a note'} />
    {error?<AppText variant="small" color={colors.danger}>{error}</AppText>:null}
   </Card>
-  <Pressable accessibilityRole="button" accessibilityState={{disabled:busy}} disabled={busy} onPress={()=>void save()} style={styles.stockSubmit}><View style={[styles.stockSubmitSurface,busy&&styles.stockSubmitBusy]}><AppText variant="label" color={colors.surface}>{busy?'Saving…':mode==='adjust'?'Save stock count':'Record delivery'}</AppText></View></Pressable>
+  <Pressable accessibilityRole="button" accessibilityState={{disabled:busy}} disabled={busy} onPress={()=>void save()} style={styles.stockSubmit}><View style={[styles.stockSubmitSurface,busy&&styles.stockSubmitBusy]}><AppText variant="label" color={colors.surface}>{busy?'Saving…':mode==='adjust'?'Save stock count':mode==='transfer'?'Transfer stock':'Record delivery'}</AppText></View></Pressable>
+ </Page>;
+}
+
+export function StockLocationsScreen(){
+ const db=useSQLiteContext();
+ const {session,businessId}=useAuth();
+ const owner=businessId??session?.user.id??'';
+ const {revision}=useSyncStatus();
+ const [locations,setLocations]=useState<InventoryLocation[]>([]);
+ const [name,setName]=useState('');
+ const [loading,setLoading]=useState(true);
+ const [busy,setBusy]=useState(false);
+ const [error,setError]=useState('');
+ const load=useCallback(async()=>setLocations(await listLocations(db,owner)),[db,owner]);
+ // Refresh the list after local or synced location changes while this route is focused.
+ // eslint-disable-next-line react-hooks/exhaustive-deps
+ useFocusEffect(useCallback(()=>{let active=true;setLoading(true);void load().catch(()=>{if(active)setError('Could not load shop locations. Please try again.');}).finally(()=>{if(active)setLoading(false);});return()=>{active=false;};},[load,revision]));
+ const save=async()=>{
+  setError('');
+  if(!name.trim()){setError('Enter a location name.');return;}
+  setBusy(true);
+  try{await addLocation(db,owner,name);setName('');await load();}
+  catch(value){setError(value instanceof Error?value.message:'Could not add this location.');}
+  finally{setBusy(false);}
+ };
+ return <Page title="Shop locations" subtitle="Keep stock balances separate for each place you sell or store products." back>
+  <Card style={{gap:12}}>
+   <AppText variant="heading">Add a location</AppText>
+   <Field label="Location name" value={name} onChangeText={setName} placeholder="e.g. Market stall"/>
+   {error?<AppText variant="small" color={colors.danger}>{error}</AppText>:null}
+   <PrimaryButton label={busy?'Saving…':'Add location'} loading={busy} onPress={()=>void save()}/>
+  </Card>
+  <SectionTitle>Current locations</SectionTitle>
+  {locations.map((location)=><Card key={location.id} style={{flexDirection:'row',alignItems:'center',gap:10}}><MapPin size={18} color={colors.purple}/><AppText variant="label" style={{flex:1}}>{location.name}</AppText>{location.is_primary?<AppText variant="small" color={colors.secondary}>Main shop</AppText>:null}</Card>)}
+  {!loading&&!locations.length?<IllustratedEmptyState image={require('@/assets/images/shop-illustrations/inventory/stock-unavailable.png')} title="No locations yet" description="Your main shop location will appear here once inventory is set up."/>:null}
+  {loading?<Card style={styles.loading}><AppText color={colors.secondary}>Loading locations…</AppText></Card>:null}
  </Page>;
 }
 

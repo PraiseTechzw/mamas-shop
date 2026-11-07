@@ -24,6 +24,25 @@ test('receive adds to location and global stock and records cost', async () => {
   expect(types).toContain('RECEIVE');
 });
 
+test('product photos remain available in inventory after saving', async () => {
+  const { db } = await openMigratedDatabase();
+  const imageUri = 'file:///shop/product-photo.jpg';
+  const productId = await addProduct(db, OWNER, {
+    name: 'Mauya Ginger',
+    sku: '',
+    category: 'Drinks',
+    unit: 'each',
+    priceCents: 50,
+    costCents: 30,
+    imageUri,
+    opening: 2,
+    reorder: 1,
+  });
+
+  expect((await getProduct(db, OWNER, productId))?.image_uri).toBe(imageUri);
+  expect((await listInventory(db, OWNER)).find((product) => product.id === productId)?.image_uri).toBe(imageUri);
+});
+
 test('stock count adjustment requires a reason and moves the balance to the count', async () => {
   const { db, productId, primaryId } = await seed();
   await expect(adjustStock(db, OWNER, productId, 3, '  ', primaryId)).rejects.toThrow(/reason/);

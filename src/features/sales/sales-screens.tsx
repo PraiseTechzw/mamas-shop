@@ -49,6 +49,7 @@ import {
   Package,
   MapPin,
   Users,
+  X,
 } from "lucide-react-native";
 import {
   ensurePrimaryLocation,
@@ -541,9 +542,10 @@ export function SalesScreen() {
       >
         {/* Search + history button */}
         <View className="flex-row items-center gap-2">
-          <View className="min-w-0 flex-1">
+          <View className="min-w-0 flex-1 flex-row items-center gap-2">
             <Field
               label=""
+              containerStyle={{ flex: 1 }}
               accessibilityLabel="Search products"
               icon={<Search size={18} color={colors.secondary} />}
               placeholder="Search products…"
@@ -551,6 +553,17 @@ export function SalesScreen() {
               value={search}
               onChangeText={setSearch}
             />
+            {search.length > 0 ? (
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="Clear product search"
+                onPress={() => setSearch("")}
+                hitSlop={8}
+                className="h-[54px] w-12 items-center justify-center rounded-xl border border-line bg-surface active:bg-brand-tint"
+              >
+                <X size={18} color={colors.secondary} />
+              </Pressable>
+            ) : null}
           </View>
           <Pressable
             accessibilityRole="button"
@@ -1003,10 +1016,10 @@ export function CheckoutScreen() {
               >
                 {/* Thumb */}
           <View className="h-12 w-12 items-center justify-center overflow-hidden rounded-xl bg-surface">
-                  {imageSource({ name: line.name, image_uri: null }) ? (
+                  {imageSource({ name: line.name, image_uri: line.imageUri }) ? (
                     <Image
                       source={
-                        imageSource({ name: line.name, image_uri: null })!
+                        imageSource({ name: line.name, image_uri: line.imageUri })!
                       }
                       resizeMode="contain"
                       className="h-11 w-11 scale-[1.12]"
@@ -1592,14 +1605,28 @@ export function SalesHistoryScreen() {
         showsVerticalScrollIndicator={false}
       >
         {/* Search */}
-        <Field
-          label=""
-          accessibilityLabel="Search sales history"
-          icon={<Search size={18} color={colors.secondary} />}
-          placeholder="Search customer or receipt…"
-          value={search}
-          onChangeText={setSearch}
-        />
+        <View className="flex-row items-center gap-2">
+          <Field
+            label=""
+            containerStyle={{ flex: 1 }}
+            accessibilityLabel="Search sales history"
+            icon={<Search size={18} color={colors.secondary} />}
+            placeholder="Search customer or receipt…"
+            value={search}
+            onChangeText={setSearch}
+          />
+          {search.length > 0 ? (
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Clear sales history search"
+              onPress={() => setSearch("")}
+              hitSlop={8}
+              className="h-12 w-12 items-center justify-center rounded-xl border border-line bg-surface active:bg-brand-tint"
+            >
+              <X size={18} color={colors.secondary} />
+            </Pressable>
+          ) : null}
+        </View>
 
         {/* Date range */}
         <View className="gap-2">
