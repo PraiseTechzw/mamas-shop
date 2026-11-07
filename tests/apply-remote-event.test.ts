@@ -1,6 +1,6 @@
 import type { SQLiteDatabase } from 'expo-sqlite';
 import { openMigratedDatabase } from './helpers/sqlite';
-import { addProduct } from '@/db/repositories/inventory';
+import { addProduct, getProduct } from '@/db/repositories/inventory';
 import { applyRemoteEvent, type RemoteSyncEvent } from '@/services/apply-remote-event';
 
 const OWNER = 'owner-1';
@@ -24,6 +24,35 @@ test('remote product create materializes once; replay does not duplicate stock',
   expect(count!.count).toBe(1);
   const product = await db.getFirstAsync<{ stock_quantity: number }>('SELECT stock_quantity FROM products WHERE id = ?', 'p-1');
   expect(product!.stock_quantity).toBe(10);
+});
+
+test('remote product deletion is idempotent and preserves its history', async () => {
+  const { db, raw } = await openMigratedDatabase();
+  const createdAt = '2026-10-15T09:00:00.000Z';
+  await applyRemoteEvent(db, event('product.create', 'product', 'remote-product', {
+    id: 'remote-product', name: 'Tea', price_cents: 500, cost_cents: 300, opening: 0, reorder: 1,
+    location_id: OWNER + ':main', updated_at: createdAt,
+  }, createdAt));
+  const deletedAt = '2026-10-15T10:00:00.000Z';
+  const deletion = event('product.delete', 'product', 'remote-product', {
+    id: 'remote-product', name: 'Tea', updated_at: deletedAt,
+  }, deletedAt);
+
+  await applyRemoteEvent(db, deletion);
+  await applyRemoteEvent(db, deletion);
+
+  expect(await db.getFirstAsync<{ is_active: number }>('SELECT is_active FROM products WHERE id = ?', 'remote-product')).toEqual({ is_active: 0 });
+  expect(await raw.getFirstAsync<{ count: number }>("SELECT COUNT(*) AS count FROM audit_log WHERE entity_id = ? AND action = 'DELETE'", 'remote-product')).toEqual({ count: 1 });
+});
+
+test('remote product deletion is deferred while this device still has stock', async () => {
+  const { db } = await openMigratedDatabase();
+  const { productId } = await seededProduct(db);
+  const deletedAt = new Date(Date.now() + 60_000).toISOString();
+  await expect(applyRemoteEvent(db, event('product.delete', 'product', productId, {
+    id: productId, name: 'Cooking Oil', updated_at: deletedAt,
+  }, deletedAt))).rejects.toThrow(/still has stock/i);
+  expect(await getProduct(db, OWNER, productId)).not.toBeNull();
 });
 
 test('remote sale applies stock, items, and sync state; replay is a no-op', async () => {

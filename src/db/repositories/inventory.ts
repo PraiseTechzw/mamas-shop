@@ -64,6 +64,41 @@ export async function updateProduct(db: SQLiteDatabase, ownerId: string, id: str
     await enqueueChange(transaction, ownerId, 'product', id, 'product.update', { id, ...syncInput, sku, name: input.name.trim(), category: input.category.trim() || 'Other', unit: input.unit.trim() || 'each', updated_at: at }, at);
   });
 }
+export async function deleteProduct(db: SQLiteDatabase, ownerId: string, id: string, actorId: string) {
+  if (!ownerId || actorId !== ownerId) throw new Error('Only the shop owner can delete products.');
+  const at = now();
+  await withDatabaseTransaction(db, async (transaction) => {
+    const product = await transaction.getFirstAsync<{ name: string; stock_quantity: number }>(
+      'SELECT name, stock_quantity FROM products WHERE id = ? AND owner_id = ? AND is_active = 1',
+      id,
+      ownerId,
+    );
+    if (!product) throw new Error('Product not found.');
+    const balances = await transaction.getFirstAsync<{ quantity: number }>(
+      'SELECT COALESCE(SUM(quantity), 0) AS quantity FROM inventory_balances WHERE owner_id = ? AND product_id = ?',
+      ownerId,
+      id,
+    );
+    if (product.stock_quantity > 0 || (balances?.quantity ?? 0) > 0) {
+      throw new Error('This product still has stock. Adjust its stock to zero before deleting it.');
+    }
+    await transaction.runAsync(
+      'UPDATE products SET is_active = 0, updated_at = ? WHERE id = ? AND owner_id = ? AND is_active = 1',
+      at,
+      id,
+      ownerId,
+    );
+    await transaction.runAsync(
+      `INSERT INTO audit_log (id, owner_id, action, entity_type, entity_id, description, created_at) VALUES (?, ?, 'DELETE', 'product', ?, ?, ?)`,
+      Crypto.randomUUID(),
+      ownerId,
+      id,
+      'Removed product ' + product.name + ' from active inventory',
+      at,
+    );
+    await enqueueChange(transaction, ownerId, 'product', id, 'product.delete', { id, name: product.name, updated_at: at }, at);
+  });
+}
 export async function receiveStock(db: SQLiteDatabase, ownerId: string, productId: string, quantity: number, unitCostCents: number, note: string, locationId?: string) {
   if (!Number.isFinite(quantity) || quantity <= 0 || unitCostCents < 0) throw new Error('Enter a quantity greater than zero and a valid cost.');
   const at = now(); const id = Crypto.randomUUID();

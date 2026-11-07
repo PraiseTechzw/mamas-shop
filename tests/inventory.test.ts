@@ -1,5 +1,5 @@
 import { openMigratedDatabase } from './helpers/sqlite';
-import { addLocation, addProduct, adjustStock, getLocationBalance, listMovements, receiveStock, transferStock } from '@/db/repositories/inventory';
+import { addLocation, addProduct, adjustStock, deleteProduct, getLocationBalance, getProduct, listInventory, listMovements, receiveStock, transferStock } from '@/db/repositories/inventory';
 import { ensureOwnerSeller } from '@/db/repositories/sellers';
 import { recordSale } from '@/db/repositories/sales';
 
@@ -62,4 +62,24 @@ test('sales cannot take a location balance negative', async () => {
   expect(balance).toBe(0);
   const saleCount = await raw.getFirstAsync<{ count: number }>('SELECT COUNT(*) AS count FROM sales WHERE owner_id = ?', OWNER);
   expect(saleCount!.count).toBe(0);
+});
+
+test('product deletion requires the owner and zero stock', async () => {
+  const { db, productId } = await seed();
+  await expect(deleteProduct(db, OWNER, productId, 'staff-1')).rejects.toThrow(/shop owner/i);
+  await expect(deleteProduct(db, OWNER, productId, OWNER)).rejects.toThrow(/stock to zero/i);
+  expect(await getProduct(db, OWNER, productId)).not.toBeNull();
+});
+
+test('owner deletion preserves product history and queues a delete event', async () => {
+  const { db, raw, productId, primaryId } = await seed();
+  await adjustStock(db, OWNER, productId, 0, 'Product discontinued', primaryId);
+
+  await deleteProduct(db, OWNER, productId, OWNER);
+
+  expect(await getProduct(db, OWNER, productId)).toBeNull();
+  expect(await listInventory(db, OWNER)).toEqual([]);
+  expect(await raw.getFirstAsync<{ count: number }>('SELECT COUNT(*) AS count FROM stock_movements WHERE product_id = ?', productId)).toEqual({ count: 2 });
+  expect(await raw.getFirstAsync<{ count: number }>("SELECT COUNT(*) AS count FROM audit_log WHERE entity_id = ? AND action = 'DELETE'", productId)).toEqual({ count: 1 });
+  expect(await raw.getFirstAsync<{ count: number }>("SELECT COUNT(*) AS count FROM sync_outbox WHERE entity_id = ? AND operation = 'product.delete'", productId)).toEqual({ count: 1 });
 });

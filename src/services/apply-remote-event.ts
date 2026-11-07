@@ -41,9 +41,31 @@ async function applyProduct(db: SQLiteDatabase, event: RemoteSyncEvent, payload:
     }
     return;
   }
-  const current = await db.getFirstAsync<{ updated_at: string }>('SELECT updated_at FROM products WHERE id = ? AND owner_id = ?', id, ownerId);
+  const current = await db.getFirstAsync<{ updated_at: string; is_active: number; stock_quantity: number }>('SELECT updated_at, is_active, stock_quantity FROM products WHERE id = ? AND owner_id = ?', id, ownerId);
   if (!current) throw new Error('The product profile has not arrived on this device yet.');
-  if (current && current.updated_at >= at) return;
+  if (current.updated_at > at || (current.updated_at === at && event.operation !== 'product.delete')) return;
+  if (event.operation === 'product.delete') {
+    const balances = await db.getFirstAsync<{ quantity: number }>(
+      'SELECT COALESCE(SUM(quantity), 0) AS quantity FROM inventory_balances WHERE owner_id = ? AND product_id = ?',
+      ownerId,
+      id,
+    );
+    if (current.stock_quantity > 0 || (balances?.quantity ?? 0) > 0) {
+      throw new Error('The product still has stock on this device and cannot be deleted yet.');
+    }
+    if (current.is_active) {
+      await db.runAsync('UPDATE products SET is_active = 0, updated_at = ? WHERE id = ? AND owner_id = ? AND is_active = 1', at, id, ownerId);
+      await db.runAsync(
+        `INSERT INTO audit_log (id, owner_id, action, entity_type, entity_id, description, created_at) VALUES (?, ?, 'DELETE', 'product', ?, ?, ?)`,
+        event.idempotency_key,
+        ownerId,
+        id,
+        'Removed product ' + name + ' from active inventory',
+        at,
+      );
+    }
+    return;
+  }
   await db.runAsync('UPDATE products SET name = ?, sku = ?, category = ?, unit = ?, price_cents = ?, cost_cents = ?, reorder_level = ?, updated_at = ? WHERE id = ? AND owner_id = ?', name, text(payload.sku) || null, text(payload.category, 'Other'), text(payload.unit, 'each'), int(either(payload, 'priceCents', 'price_cents')), int(either(payload, 'costCents', 'cost_cents')), number(either(payload, 'reorder', 'reorder_level')), at, id, ownerId);
 }
 
@@ -205,6 +227,7 @@ export async function applyRemoteEvent(db: SQLiteDatabase, event: RemoteSyncEven
     }
     case 'product.create':
     case 'product.update':
+    case 'product.delete':
       await applyProduct(db, event, payload);
       break;
     case 'sale.create':

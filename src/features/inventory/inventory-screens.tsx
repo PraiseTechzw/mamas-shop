@@ -2,12 +2,12 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { Alert, Image, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { useSQLiteContext } from 'expo-sqlite';
-import { Apple, ArrowDownToLine, Beef, Boxes, ChevronRight, Cookie, Droplets, Ellipsis, ImagePlus, Pencil, Plus, Search, Smartphone, CupSoda, Zap, Bell, Package, Tag } from 'lucide-react-native';
+import { Apple, ArrowDownToLine, Beef, Boxes, ChevronRight, Cookie, Droplets, Ellipsis, ImagePlus, Pencil, Plus, Search, Smartphone, CupSoda, Zap, Bell, Package, Tag, Trash2 } from 'lucide-react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { File, Paths } from 'expo-file-system';
 import { useAuth } from '@/features/auth/auth-context';
 import { useSyncStatus } from '@/features/sync/sync-context';
-import { addProduct, adjustStock, getLocationBalance, getProduct, listInventory, listLocations, listMovements, listProductBalances, receiveStock, updateProduct } from '@/db/repositories/inventory';
+import { addProduct, adjustStock, deleteProduct, getLocationBalance, getProduct, listInventory, listLocations, listMovements, listProductBalances, receiveStock, updateProduct } from '@/db/repositories/inventory';
 import type { InventoryLocation, Product, StockMovement } from '@/db/schema';
 import { colors, radius } from '@/constants/theme';
 import { imageSource, productImage } from '@/lib/product-images';
@@ -149,9 +149,10 @@ export function ProductFormScreen({edit=false}:{edit?:boolean}) {
 }
 
 export function ProductDetailScreen(){
- const db=useSQLiteContext();const {session,businessId}=useAuth();const owner=businessId??session?.user.id??'';const params=useLocalSearchParams<{id:string}>();const id=Array.isArray(params.id)?params.id[0]:params.id;
+ const db=useSQLiteContext();const {session,businessId,userId}=useAuth();const owner=businessId??session?.user.id??'';const canDeleteProduct=Boolean(userId&&userId===owner);const params=useLocalSearchParams<{id:string}>();const id=Array.isArray(params.id)?params.id[0]:params.id;
  const {revision}=useSyncStatus();
  const [product,setProduct]=useState<Product|null>(null);const [movements,setMovements]=useState<StockMovement[]>([]);const [locations,setLocations]=useState<(InventoryLocation&{quantity:number})[]>([]);const [loading,setLoading]=useState(true);const [error,setError]=useState(false);
+ const [deleting,setDeleting]=useState(false);
  // The shared revision intentionally recreates this focus callback after any local or synced write.
  // eslint-disable-next-line react-hooks/exhaustive-deps
  useFocusEffect(useCallback(()=>{let active=true;setLoading(true);setError(false);void Promise.all([getProduct(db,owner,id),listMovements(db,owner,id),listProductBalances(db,owner,id)]).then(([p,m,b])=>{if(active){setProduct(p);setMovements(m);setLocations(b);}}).catch(()=>{if(active)setError(true);}).finally(()=>{if(active)setLoading(false);});return()=>{active=false;};},[db,owner,id,revision]));
@@ -159,6 +160,7 @@ export function ProductDetailScreen(){
  if(error||!product)return <Page title="Product details" back><IllustratedEmptyState image={require('@/assets/images/shop-illustrations/inventory/stock-unavailable.png')} title={error?'Product unavailable':'Product not found'} description={error?'We could not load this product. Go back to Inventory and try again.':'This product may have been removed from your inventory.'} action={<SecondaryButton label="Back to inventory" onPress={()=>router.replace('/(tabs)/inventory')}/>} /></Page>;
  const detail=productDetails(product);const profit=(product.price_cents??0)-(product.cost_cents??0);const stockState=product.stock_quantity<=0?'out':product.stock_quantity<=product.reorder_level?'low':'in';const stockLabel=stockState==='out'?'Out of Stock':stockState==='low'?'Low Stock':'In Stock';const stockColor=stockState==='out'?colors.danger:stockState==='low'?colors.warning:colors.success;
  const editProduct=(step?:string)=>router.push({pathname:'/inventory/add',params:{id,edit:'1',...(step?{step}:{})}});
+ const confirmDelete=()=>{if(!userId||userId!==owner||deleting)return;const actorId=userId;Alert.alert('Delete product?',`${product.name} will be removed from active inventory. Sales and stock history are preserved.`,[{text:'Cancel',style:'cancel'},{text:'Delete product',style:'destructive',onPress:()=>{setDeleting(true);void deleteProduct(db,owner,id,actorId).then(()=>router.replace('/(tabs)/inventory')).catch((value:unknown)=>{setDeleting(false);Alert.alert('Could not delete product',value instanceof Error?value.message:'Please try again.');});}}]);};
  return <Page title="Product Details" back>
   <View style={styles.detailHero}>
    <View style={styles.detailPhotoFrame}>{imageSource(product)?<Image source={imageSource(product)} resizeMode="contain" style={styles.detailPhotoImage} accessibilityLabel={`${product.name} photo`}/>:<Package stroke={colors.deepPurple} size={54}/>}</View>
@@ -188,6 +190,7 @@ export function ProductDetailScreen(){
   <Pressable accessibilityRole="button" onPress={()=>editProduct()} style={({pressed})=>[styles.editProductButton,pressed&&styles.editProductButtonPressed]}>
    <Pencil size={17} stroke={colors.surface}/><AppText variant="label" color={colors.surface}>Edit Product</AppText>
   </Pressable>
+  {canDeleteProduct?<Pressable accessibilityRole="button" accessibilityState={{disabled:deleting}} disabled={deleting} onPress={confirmDelete} className="min-h-[48px] flex-row items-center justify-center gap-2 rounded-full border border-danger/30 bg-danger/10 px-4"><Trash2 size={17} stroke={colors.danger}/><AppText variant="label" color={colors.danger}>{deleting?'Deleting…':'Delete product'}</AppText></Pressable>:null}
   <Pressable accessibilityRole="button" onPress={()=>editProduct('stock')} style={styles.alertButton}><Bell size={17} stroke={colors.danger}/><AppText variant="label" color={colors.danger}>Set Low Stock Alert</AppText></Pressable>
   <View style={styles.alertHint}><AppText variant="small" color={colors.secondary}>Alert when stock reaches {product.reorder_level} {product.unit}.</AppText></View>
   <SectionTitle action="See all" onAction={()=>router.push({pathname:'/inventory/history',params:{productId:id}})}>Recent stock activity</SectionTitle>{movements.slice(0,8).map((m)=><MovementCard key={m.id} item={m}/>)}</Page>;

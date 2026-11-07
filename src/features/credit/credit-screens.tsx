@@ -17,6 +17,7 @@ import {
   Smartphone,
   User,
   WalletCards,
+  X,
 } from 'lucide-react-native';
 import { colors } from '@/constants/theme';
 import { formatDate, formatMoney, toCents } from '@/lib/format';
@@ -243,14 +244,28 @@ function CustomerList({ selectForCreditSale = false }: { selectForCreditSale?: b
       ) : null}
 
       {/* ── Search + filter ── */}
-      <Field
-        label=""
-        accessibilityLabel="Search customers"
-        placeholder="Search customers…"
-        value={search}
-        onChangeText={setSearch}
-        icon={<Search size={18} color={colors.secondary} />}
-      />
+      <View className="flex-row items-center gap-2">
+        <Field
+          label=""
+          containerStyle={{ flex: 1 }}
+          accessibilityLabel="Search customers"
+          placeholder="Search customers…"
+          value={search}
+          onChangeText={setSearch}
+          icon={<Search size={18} color={colors.secondary} />}
+        />
+        {search.length > 0 ? (
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Clear customer search"
+            onPress={() => setSearch('')}
+            hitSlop={8}
+            className="h-12 w-12 items-center justify-center rounded-xl border border-line bg-surface active:bg-brand-tint"
+          >
+            <X size={18} color={colors.secondary} />
+          </Pressable>
+        ) : null}
+      </View>
 
       {!selectForCreditSale ? (
         <View className="flex-row gap-2">
@@ -502,7 +517,7 @@ export function CustomerAccountScreen() {
           className="min-w-0 flex-1 gap-1 rounded-2xl border border-line bg-surface px-4 py-3 shadow-sm"
         >
           <AppText variant="small" color={colors.secondary} style={{ fontSize: 10, letterSpacing: 0.5, textTransform: 'uppercase' }}>
-            Outstanding
+            Amount owed
           </AppText>
           <AppText
             variant="amount"
