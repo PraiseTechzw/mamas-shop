@@ -9,6 +9,6 @@ const supabaseKey = process.env.EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY ?? process.
 export const hasSupabaseConfig = Boolean(supabaseUrl && supabaseKey);
 export const supabase = hasSupabaseConfig
   ? createClient(supabaseUrl!, supabaseKey!, {
-      auth: { storage: localStorage, autoRefreshToken: true, persistSession: true, detectSessionInUrl: false },
+      auth: { storage: typeof localStorage === 'undefined' ? undefined : localStorage, autoRefreshToken: true, persistSession: true, detectSessionInUrl: false },
     })
   : null;

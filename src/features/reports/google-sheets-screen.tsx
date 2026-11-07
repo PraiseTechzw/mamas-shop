@@ -128,7 +128,9 @@ export function GoogleSheetsReportsScreen() {
           setMessage('Google connected. Uploading your shop history…');
           const syncResult = await supabase.functions.invoke('google-sheets', { body: { action: 'sync', ownerId } });
           if (syncResult.error) throw syncResult.error;
-          setMessage('Google connected. Your spreadsheet has been updated with your shop history.');
+          setMessage(syncResult.data?.skipped
+            ? syncResult.data.message ?? 'A spreadsheet update is already running.'
+            : 'Google connected. Your spreadsheet has been updated with your shop history.');
           await load();
         } else {
           setMessage('Google did not return to Expo Go. If you approved access, deploy the updated Google Sheets functions and migration 202610210008, then restart Expo Go.');
@@ -150,6 +152,7 @@ export function GoogleSheetsReportsScreen() {
     try {
       const { data, error } = await supabase.functions.invoke('google-sheets', { body: { action: 'sync', ownerId } });
       if (error) throw error;
+      if (!data || typeof data !== 'object') throw new Error('Google Sheets returned an unexpected update response.');
       setMessage(data.skipped
         ? data.message ?? 'A spreadsheet update is already running.'
         : `Spreadsheet updated from ${data.synced ?? 0} business events.`);

@@ -15,6 +15,8 @@ This document records the product technology choices and the expected data/UI fl
 
 Expo UI and NativeWind have different jobs: Expo UI supplies native controls; NativeWind styles the surrounding React Native layout. Keep platform-specific control usage isolated and verify the component's supported platforms against the SDK 57 docs before using it.
 
+Web builds use SQLite's alpha web backend. Metro must treat `.wasm` files as assets, and the hosting server must send `Cross-Origin-Embedder-Policy: credentialless` and `Cross-Origin-Opener-Policy: same-origin` so SQLite can use `SharedArrayBuffer`. The Expo Router plugin configures these headers for Expo Hosting; deployments to other hosts must configure the equivalent response headers there.
+
 ## Data flow
 
 1. A route in `src/app/` renders a screen from its owning `src/features/<feature>/` module.
