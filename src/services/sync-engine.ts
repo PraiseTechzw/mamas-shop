@@ -1,6 +1,7 @@
 import type { SQLiteDatabase } from 'expo-sqlite';
 import { supabase } from '@/lib/supabase';
 import { applyRemoteEvent, type RemoteSyncEvent } from '@/services/apply-remote-event';
+import { withDatabaseTransaction } from '@/db/transactions';
 
 type OutboxRow = {
   id: string;
@@ -88,7 +89,7 @@ export async function syncOutbox(db: SQLiteDatabase, ownerId: string, force = fa
       }, { onConflict: 'idempotency_key', ignoreDuplicates: true });
       if (error) throw error;
 
-      await db.withTransactionAsync(async () => {
+      await withDatabaseTransaction(db, async (db) => {
         await db.runAsync('DELETE FROM sync_outbox WHERE id = ? AND owner_id = ?', row.id, ownerId);
         const syncedColumn = SYNCED_STATE_TABLES[row.entity_type];
         if (syncedColumn) await db.runAsync(`UPDATE ${syncedColumn} SET sync_state = 'SYNCED' WHERE id = ? AND owner_id = ?`, row.entity_id, ownerId);
@@ -169,7 +170,7 @@ async function pullRemoteEvents(db: SQLiteDatabase, ownerId: string) {
         continue;
       }
       try {
-        await db.withTransactionAsync(async () => {
+        await withDatabaseTransaction(db, async (db) => {
           await applyRemoteEvent(db, event);
           await db.runAsync('INSERT OR IGNORE INTO sync_applied_events (idempotency_key, owner_id, applied_at) VALUES (?, ?, ?)', event.idempotency_key, ownerId, new Date().toISOString());
           await db.runAsync('INSERT INTO sync_metadata (owner_id, last_pulled_at, last_pulled_key) VALUES (?, ?, ?) ON CONFLICT(owner_id) DO UPDATE SET last_pulled_at = excluded.last_pulled_at, last_pulled_key = excluded.last_pulled_key', ownerId, event.received_at, event.idempotency_key);
@@ -183,7 +184,7 @@ async function pullRemoteEvents(db: SQLiteDatabase, ownerId: string) {
           idempotencyKey: event.idempotency_key,
           error: description,
         });
-        await db.withTransactionAsync(async () => {
+        await withDatabaseTransaction(db, async (db) => {
           await db.runAsync('INSERT OR IGNORE INTO sync_conflicts (idempotency_key, owner_id, description, created_at, payload_json) VALUES (?, ?, ?, ?, ?)', event.idempotency_key, ownerId, description, new Date().toISOString(), JSON.stringify(event));
           await db.runAsync('INSERT INTO sync_metadata (owner_id, last_pulled_at, last_pulled_key) VALUES (?, ?, ?) ON CONFLICT(owner_id) DO UPDATE SET last_pulled_at = excluded.last_pulled_at, last_pulled_key = excluded.last_pulled_key', ownerId, event.received_at, event.idempotency_key);
         });
@@ -202,7 +203,7 @@ export async function retrySyncConflicts(db: SQLiteDatabase, ownerId: string) {
   for (const row of rows) {
     try {
       const event = JSON.parse(row.payload_json) as RemoteSyncEvent;
-      await db.withTransactionAsync(async () => {
+      await withDatabaseTransaction(db, async (db) => {
         await applyRemoteEvent(db, event);
         await db.runAsync('UPDATE sync_conflicts SET resolved_at = ? WHERE idempotency_key = ? AND owner_id = ?', new Date().toISOString(), row.idempotency_key, ownerId);
       });

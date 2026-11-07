@@ -2,6 +2,7 @@ import type { SQLiteDatabase } from 'expo-sqlite';
 import * as Crypto from 'expo-crypto';
 import type { AccountEntry, Customer, CustomerPurchaseItem, CustomerRepayment } from '@/db/schema';
 import { enqueueChange } from './outbox';
+import { withDatabaseTransaction } from '@/db/transactions';
 
 export async function listCustomers(db: SQLiteDatabase, ownerId: string): Promise<Customer[]> {
   return db.getAllAsync<Customer>(`
@@ -52,10 +53,10 @@ export async function updateCustomer(db: SQLiteDatabase, ownerId: string, custom
   const cleanPhone = phone.trim() || null;
   const now = new Date().toISOString();
   try {
-    await db.withTransactionAsync(async () => {
-      await db.runAsync('UPDATE customers SET name = ?, phone = ?, updated_at = ? WHERE owner_id = ? AND id = ?', cleanName, cleanPhone, now, ownerId, customer.id);
-      await db.runAsync("INSERT INTO audit_log (id, owner_id, action, entity_type, entity_id, description, created_at) VALUES (?, ?, 'UPDATE', 'customer', ?, ?, ?)", Crypto.randomUUID(), ownerId, customer.id, 'Updated customer ' + cleanName, now);
-      await enqueueChange(db, ownerId, 'customer', customer.id, 'customer.update', { id: customer.id, name: cleanName, phone: cleanPhone, updated_at: now }, now);
+    await withDatabaseTransaction(db, async (transaction) => {
+      await transaction.runAsync('UPDATE customers SET name = ?, phone = ?, updated_at = ? WHERE owner_id = ? AND id = ?', cleanName, cleanPhone, now, ownerId, customer.id);
+      await transaction.runAsync("INSERT INTO audit_log (id, owner_id, action, entity_type, entity_id, description, created_at) VALUES (?, ?, 'UPDATE', 'customer', ?, ?, ?)", Crypto.randomUUID(), ownerId, customer.id, 'Updated customer ' + cleanName, now);
+      await enqueueChange(transaction, ownerId, 'customer', customer.id, 'customer.update', { id: customer.id, name: cleanName, phone: cleanPhone, updated_at: now }, now);
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : '';
@@ -70,10 +71,10 @@ export async function createCustomer(db: SQLiteDatabase, ownerId: string, name: 
   const now = new Date().toISOString();
   const id = Crypto.randomUUID();
   try {
-    await db.withTransactionAsync(async () => {
-      await db.runAsync('INSERT INTO customers (id, owner_id, name, phone, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)', id, ownerId, cleanName, phone.trim() || null, now, now);
-      await db.runAsync("INSERT INTO audit_log (id, owner_id, action, entity_type, entity_id, description, created_at) VALUES (?, ?, 'CREATE', 'customer', ?, ?, ?)", Crypto.randomUUID(), ownerId, id, 'Added customer ' + cleanName, now);
-      await enqueueChange(db, ownerId, 'customer', id, 'customer.create', { id, name: cleanName, phone: phone.trim() || null, created_at: now }, now);
+    await withDatabaseTransaction(db, async (transaction) => {
+      await transaction.runAsync('INSERT INTO customers (id, owner_id, name, phone, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)', id, ownerId, cleanName, phone.trim() || null, now, now);
+      await transaction.runAsync("INSERT INTO audit_log (id, owner_id, action, entity_type, entity_id, description, created_at) VALUES (?, ?, 'CREATE', 'customer', ?, ?, ?)", Crypto.randomUUID(), ownerId, id, 'Added customer ' + cleanName, now);
+      await enqueueChange(transaction, ownerId, 'customer', id, 'customer.create', { id, name: cleanName, phone: phone.trim() || null, created_at: now }, now);
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : '';

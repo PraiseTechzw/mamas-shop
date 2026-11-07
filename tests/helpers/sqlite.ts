@@ -47,6 +47,16 @@ export function createTestDatabase(handle = new DatabaseSync(':memory:')) {
         throw error;
       }
     },
+    async withExclusiveTransactionAsync(body: (transaction: SQLiteDatabase) => Promise<void>) {
+      handle.exec('BEGIN IMMEDIATE');
+      try {
+        await body(db as unknown as SQLiteDatabase);
+        handle.exec('COMMIT');
+      } catch (error) {
+        handle.exec('ROLLBACK');
+        throw error;
+      }
+    },
     close() {
       handle.close();
     },

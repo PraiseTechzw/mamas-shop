@@ -72,17 +72,13 @@ function WelcomeBenefits() {
   </View>)}</View>;
 }
 
-function OfflineFirstNotice({ firstSignIn = false, offlineAccess = false }: { firstSignIn?: boolean; offlineAccess?: boolean }) {
+function SavedShopNotice() {
   return <View style={styles.offlineNotice}>
     <View style={styles.offlineNoticeIcon}><WifiOff size={18} color={colors.deepPurple} /></View>
     <View style={styles.offlineNoticeCopy}>
-      <AppText variant="label" color={colors.deepPurple}>{offlineAccess ? 'Saved shop available on this device' : 'Sign-in requires internet'}</AppText>
+      <AppText variant="label" color={colors.deepPurple}>Your saved shop is ready</AppText>
       <AppText variant="small" color={colors.secondary} style={styles.offlineNoticeDescription}>
-        {offlineAccess
-          ? 'Email and password sign-in requires internet. You can continue to your saved shop on this device.'
-          : firstSignIn
-          ? 'Connect to the internet to create an account and sign in for the first time.'
-          : 'Connect to the internet to sign in to your account.'}
+        Your previous sign-in is saved on this device. Continue to your shop without signing in again.
       </AppText>
     </View>
   </View>;
@@ -212,10 +208,14 @@ export function LoginScreen() {
         <BrandHeader compact />
         <View style={styles.loginIntro}>
           <AppText variant="title" style={styles.loginTitle}>{creating ? 'Create your account' : 'Welcome back!'}</AppText>
-          <AppText color={colors.secondary} style={styles.loginSubtitle}>{creating ? 'Set up your sign-in to manage your business.' : 'Sign in to continue managing your business.'}</AppText>
+          <AppText color={colors.secondary} style={styles.loginSubtitle}>
+            {offlineAccess ? 'Your saved shop is ready on this device.' : creating ? 'Set up your sign-in to manage your business.' : 'Sign in to continue managing your business.'}
+          </AppText>
         </View>
-        <OfflineFirstNotice firstSignIn={!offlineAccess} offlineAccess={offlineAccess} />
-        {offlineAccess ? <AuthButton label="Continue to saved shop" variant="secondary" icon={<WifiOff size={18} color={colors.deepPurple} />} onPress={() => router.replace('/(tabs)')} /> : null}
+        {offlineAccess ? <>
+          <SavedShopNotice />
+          <AuthButton label="Continue to saved shop" variant="secondary" icon={<WifiOff size={18} color={colors.deepPurple} />} onPress={() => router.replace('/(tabs)')} />
+        </> : null}
         <View style={styles.form}>
           {creating ? <Field key="full-name" label="Your name" placeholder="e.g. Mama Moyo" icon={<UserRound size={18} color={colors.secondary} />} focusAccent inputRef={fullNameInput} onFocus={() => focusField(fullNameInput.current)} autoCapitalize="words" defaultValue="" onChangeText={(value) => { fullName.current = value; }} onSubmitEditing={() => emailInput.current?.focus()} returnKeyType="next" submitBehavior="submit" /> : null}
           <Field key="email" label="Email address" placeholder="you@example.com" icon={<Mail size={18} color={colors.secondary} />} focusAccent inputRef={emailInput} onFocus={() => focusField(emailInput.current)} keyboardType="email-address" autoCapitalize="none" autoCorrect={false} defaultValue="" onChangeText={(value) => { email.current = value; }} onSubmitEditing={() => passwordInput.current?.focus()} returnKeyType="next" submitBehavior="submit" />

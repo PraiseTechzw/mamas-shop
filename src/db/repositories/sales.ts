@@ -3,6 +3,7 @@ import * as Crypto from 'expo-crypto';
 import type { InventoryLocation, PaymentMethod, Product, SaleSummary, Seller } from '@/db/schema';
 import { enqueueChange } from './outbox';
 import { ensurePrimaryLocation } from './inventory';
+import { withDatabaseTransaction } from '@/db/transactions';
 
 export async function listProductsForSale(db: SQLiteDatabase, ownerId: string, search = '', locationId?: string | null): Promise<Product[]> {
   const pattern = '%' + search.trim() + '%';
@@ -98,7 +99,7 @@ export async function recordSale(db: SQLiteDatabase, input: RecordSaleInput) {
   const changeOwedId = changeDueCents > 0 ? Crypto.randomUUID() : null;
   const outboxPayload = { id: saleId, receipt_number: receiptNumber, customer_id: input.customerId, seller_id: input.sellerId, seller_name: selectedSeller.name, location_id: selectedLocation.id, location_name: selectedLocation.name, total_cents: totalCents, paid_cents: input.amountPaidCents, balance_cents: balanceCents, amount_tendered_cents: amountTenderedCents, change_due_cents: changeDueCents, change_owed_id: changeOwedId, payment_method: input.method, status, created_at: now, items: lines };
 
-  await db.withTransactionAsync(async () => {
+  await withDatabaseTransaction(db, async (db) => {
     await ensurePrimaryLocation(db, input.ownerId);
     const location = await db.getFirstAsync<InventoryLocation>('SELECT id, name, is_primary FROM inventory_locations WHERE id = ? AND owner_id = ?', selectedLocation.id, input.ownerId);
     const seller = await db.getFirstAsync<{ id: string }>('SELECT id FROM sellers WHERE id = ? AND owner_id = ? AND is_active = 1', input.sellerId, input.ownerId);
@@ -140,7 +141,7 @@ export async function recordRepayment(db: SQLiteDatabase, ownerId: string, custo
   if (!Number.isInteger(amountCents) || amountCents <= 0) throw new Error('Enter an amount greater than zero.');
   const now = new Date().toISOString();
   const id = Crypto.randomUUID();
-  await db.withTransactionAsync(async () => {
+  await withDatabaseTransaction(db, async (db) => {
     const customer = await db.getFirstAsync<{ id: string }>('SELECT id FROM customers WHERE id = ? AND owner_id = ?', customerId, ownerId);
     if (!customer) throw new Error('Customer account could not be found.');
     const row = await db.getFirstAsync<{ balance_cents: number }>('SELECT COALESCE(SUM(amount_cents), 0) AS balance_cents FROM account_entries WHERE customer_id = ? AND owner_id = ?', customerId, ownerId);
@@ -176,7 +177,7 @@ export async function getOpenChangeOwedTotal(db: SQLiteDatabase, ownerId: string
 /** Marks change owed to the customer as returned. Never touches customer credit or payment totals. */
 export async function settleChangeOwed(db: SQLiteDatabase, ownerId: string, changeOwedId: string, note = '') {
   const now = new Date().toISOString();
-  await db.withTransactionAsync(async () => {
+  await withDatabaseTransaction(db, async (db) => {
     const record = await db.getFirstAsync<{ id: string; status: string; receipt_number: string | null }>('SELECT id, status, receipt_number FROM change_owed WHERE id = ? AND owner_id = ?', changeOwedId, ownerId);
     if (!record) throw new Error('This change record could not be found.');
     if (record.status === 'SETTLED') throw new Error('This change has already been returned to the customer.');

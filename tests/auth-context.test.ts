@@ -107,6 +107,31 @@ test('restores a saved shop when Supabase cannot restore the persisted session',
   raw.close();
 });
 
+test('keeps a restored Supabase session active when the device is offline', async () => {
+  prepareTest();
+  const { db, raw } = await seedSavedShop();
+  mockDatabase = db;
+  const session = { user: { id: 'saved-account' } };
+  mockGetSession.mockResolvedValue({
+    data: { session },
+    error: null,
+  });
+  mockCheckConnection.mockResolvedValue('offline');
+
+  const root = await mountAuthProvider();
+
+  expect(observedAuth).toMatchObject({
+    userId: 'saved-account',
+    businessId: 'saved-shop',
+    offlineAccess: false,
+    session,
+    loading: false,
+  });
+
+  await unmount(root);
+  raw.close();
+});
+
 test('restores a saved shop when there is no session and the device is offline', async () => {
   prepareTest();
   const { db, raw } = await seedSavedShop();
