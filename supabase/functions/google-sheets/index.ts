@@ -35,14 +35,15 @@ async function getUser(request: Request) {
   return error ? null : data.user;
 }
 
-async function accessToken(connection: { access_token: string | null; access_token_expires_at: string | null; refresh_token: string }) {
+async function accessToken(connection: { owner_id: string; access_token: string | null; access_token_expires_at: string | null; refresh_token: string }) {
   if (connection.access_token && connection.access_token_expires_at && Date.parse(connection.access_token_expires_at) > Date.now() + 60_000) return connection.access_token;
   configured();
   const response = await fetch('https://oauth2.googleapis.com/token', { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: new URLSearchParams({ client_id: Deno.env.get('GOOGLE_OAUTH_CLIENT_ID')!, client_secret: Deno.env.get('GOOGLE_OAUTH_CLIENT_SECRET')!, refresh_token: connection.refresh_token, grant_type: 'refresh_token' }) });
   const data = await response.json();
   if (!response.ok || !data.access_token) throw new Error('Google could not refresh the connection. Please reconnect the spreadsheet.');
   const expiresAt = new Date(Date.now() + Number(data.expires_in ?? 3600) * 1000).toISOString();
-  await admin.from('google_sheets_connections').update({ access_token: data.access_token, access_token_expires_at: expiresAt, updated_at: new Date().toISOString(), last_error: null }).eq('owner_id', (connection as { owner_id?: string }).owner_id ?? '');
+  const { error } = await admin.from('google_sheets_connections').update({ access_token: data.access_token, access_token_expires_at: expiresAt, updated_at: new Date().toISOString(), last_error: null }).eq('owner_id', connection.owner_id);
+  if (error) throw error;
   return data.access_token as string;
 }
 
@@ -135,13 +136,19 @@ Deno.serve(async (request) => {
       const returnUrl = body.redirectUrl;
       if (!validAppReturnUrl(returnUrl)) return json({ error: 'The app return link is invalid. Restart Expo Go and try connecting again.' }, 400);
       const shopName = typeof body.shopName === 'string' ? body.shopName : "Mama's Shop";
+      const { data: existingConnection, error: connectionError } = await admin
+        .from('google_sheets_connections')
+        .select('connected_email')
+        .eq('owner_id', ownerId)
+        .maybeSingle();
+      if (connectionError) throw connectionError;
       const state = `${crypto.randomUUID()}${crypto.randomUUID().replaceAll('-', '')}`;
       step = 'save-oauth-state';
       const { error } = await admin.from('google_sheets_oauth_states').insert({ state, owner_id: ownerId, shop_name: typeof body.shopName === 'string' ? body.shopName : "Mama's Shop", return_url: returnUrl, expires_at: new Date(Date.now() + 30 * 60_000).toISOString() });
       if (error) throw error;
       step = 'build-google-authorization-url';
       const url = new URL('https://accounts.google.com/o/oauth2/v2/auth');
-      url.search = new URLSearchParams({ client_id: Deno.env.get('GOOGLE_OAUTH_CLIENT_ID')!, redirect_uri: Deno.env.get('GOOGLE_OAUTH_REDIRECT_URI')!, response_type: 'code', scope: 'openid email https://www.googleapis.com/auth/spreadsheets https://www.googleapis.com/auth/drive.file', access_type: 'offline', prompt: 'consent', include_granted_scopes: 'true', state, login_hint: user.email ?? '' }).toString();
+      url.search = new URLSearchParams({ client_id: Deno.env.get('GOOGLE_OAUTH_CLIENT_ID')!, redirect_uri: Deno.env.get('GOOGLE_OAUTH_REDIRECT_URI')!, response_type: 'code', scope: 'openid email https://www.googleapis.com/auth/spreadsheets https://www.googleapis.com/auth/drive.file', access_type: 'offline', prompt: 'consent', include_granted_scopes: 'true', state, login_hint: existingConnection?.connected_email ?? user.email ?? '' }).toString();
       return json({ authorizationUrl: url.toString(), shopName });
     }
     if (body.action === 'status') {

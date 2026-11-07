@@ -32,7 +32,6 @@ import {
   PackagePlus,
   RefreshCcw,
   ShoppingCart,
-  Sparkles,
   TriangleAlert,
   UsersRound,
   WalletCards,
@@ -100,7 +99,7 @@ function salesDiff(
   yesterday: number,
 ): { label: string; positive: boolean | null } {
   if (yesterday === 0 && today === 0) return { label: 'No sales yet today', positive: null };
-  if (yesterday === 0) return { label: 'First sales today!', positive: true };
+  if (yesterday === 0) return { label: 'No sales yesterday', positive: true };
   const pct = Math.round(((today - yesterday) / yesterday) * 100);
   if (pct === 0) return { label: 'Same as yesterday', positive: null };
   return { label: `${pct > 0 ? '+' : ''}${pct}% vs yesterday`, positive: pct > 0 };
@@ -179,9 +178,22 @@ export function DashboardScreen() {
   const progressPct =
     data.salesYesterdayCents > 0
       ? Math.min(100, Math.round((data.salesTodayCents / data.salesYesterdayCents) * 100))
-      : data.salesTodayCents > 0
-        ? 100
-        : 0;
+      : 0;
+  const trendLabel =
+    data.salesYesterdayCents === 0
+      ? data.salesTodayCents === 0
+        ? 'No sales yet'
+        : 'No sales yesterday'
+      : data.salesTodayCents > data.salesYesterdayCents
+        ? 'Ahead of yesterday'
+        : data.salesTodayCents < data.salesYesterdayCents
+          ? 'Below yesterday'
+          : 'Same as yesterday';
+  const TrendIcon = diff.positive === true ? ArrowUp : diff.positive === false ? ArrowDown : Minus;
+  const trendColor =
+    diff.positive === false ? colors.dangerTint : diff.positive === true ? colors.gold : colors.surface;
+  const trendBackground =
+    diff.positive === false ? 'bg-danger/20' : diff.positive === true ? 'bg-gold/20' : 'bg-white/15';
 
   return (
     <ScrollView
@@ -234,10 +246,10 @@ export function DashboardScreen() {
                 {`TODAY'S SALES`}
               </AppText>
             </View>
-            <View className="flex-row items-center gap-1 rounded-full bg-gold/20 px-2.5 py-1">
-              <Sparkles size={10} color={colors.gold} />
-              <AppText variant="small" color={colors.gold} style={{ fontSize: 10 }}>
-                {data.salesTodayCents > 0 ? 'Great momentum' : 'Ready when you are'}
+            <View className={`flex-row items-center gap-1 rounded-full px-2.5 py-1 ${trendBackground}`}>
+              <TrendIcon size={11} color={trendColor} />
+              <AppText variant="small" color={trendColor} style={{ fontSize: 10 }}>
+                {trendLabel}
               </AppText>
             </View>
           </View>
@@ -274,7 +286,11 @@ export function DashboardScreen() {
           {/* Footer */}
           <View className="flex-row items-center justify-between">
             <View className="flex-row items-baseline gap-1.5">
-              <AppText variant="amount" color={colors.surface} style={{ fontSize: 23, lineHeight: 28 }}>
+              <AppText
+                variant="amount"
+                color={colors.surface}
+                style={{ fontSize: 23, lineHeight: 28, fontVariant: ['tabular-nums'] }}
+              >
                 {data.salesTodayCount}
               </AppText>
               <AppText variant="small" color={colors.lavender} style={{ fontSize: 11 }}>
@@ -293,6 +309,39 @@ export function DashboardScreen() {
           </View>
           )}
         </PressableCard>
+
+        {/* ── Quick Actions ── */}
+        <View className="gap-2">
+          <AppText variant="heading" color={colors.text} style={{ fontSize: 14 }}>
+            Quick actions
+          </AppText>
+          <View className="flex-row gap-2">
+            <QuickAction
+              title="New sale"
+              icon={<ShoppingCart size={20} color={colors.surface} />}
+              tone="primary"
+              onPress={() => { useCart.getState().clear(); router.push('/(tabs)/sales'); }}
+            />
+            <QuickAction
+              title="Add stock"
+              icon={<PackagePlus size={20} color={colors.deepPurple} />}
+              tone="gold"
+              onPress={() => router.push('/inventory/receive-stock')}
+            />
+            <QuickAction
+              title="Customers"
+              icon={<UsersRound size={20} color={colors.deepPurple} />}
+              tone="soft"
+              onPress={() => router.push('/(tabs)/credit')}
+            />
+            <QuickAction
+              title="History"
+              icon={<History size={20} color={colors.deepPurple} />}
+              tone="outline"
+              onPress={() => router.push('/sales/history')}
+            />
+          </View>
+        </View>
 
         {/* ── Today's Breakdown ── */}
         <View className="gap-2.5">
@@ -354,41 +403,6 @@ export function DashboardScreen() {
           <StockAlertRow count={data.lowStockCount} />
         </View>
 
-        {/* ── Quick Actions ── */}
-        <View className="gap-2.5">
-          <AppText variant="heading" color={colors.text} style={{ fontSize: 14 }}>
-            Quick actions
-          </AppText>
-          <View className="flex-row gap-2.5">
-            <QuickAction
-              title="New Sale"
-              icon={<ShoppingCart size={22} color={colors.surface} />}
-              tone="primary"
-              onPress={() => { useCart.getState().clear(); router.push('/(tabs)/sales'); }}
-            />
-            <QuickAction
-              title="Add Stock"
-              icon={<PackagePlus size={22} color={colors.deepPurple} />}
-              tone="gold"
-              onPress={() => router.push('/inventory/receive-stock')}
-            />
-          </View>
-          <View className="flex-row gap-2.5">
-            <QuickAction
-              title="Customers"
-              icon={<UsersRound size={22} color={colors.deepPurple} />}
-              tone="soft"
-              onPress={() => router.push('/(tabs)/credit')}
-            />
-            <QuickAction
-              title="Sales History"
-              icon={<History size={22} color={colors.deepPurple} />}
-              tone="outline"
-              onPress={() => router.push('/sales/history')}
-            />
-          </View>
-        </View>
-
       </Animated.View>
     </ScrollView>
   );
@@ -400,7 +414,7 @@ export function DashboardScreen() {
 
 function HeroAmount({ cents }: { cents: number }) {
   return (
-    <AppText variant="amount" color={colors.surface} style={{ fontSize: 40, lineHeight: 46, letterSpacing: -1 }}>
+    <AppText variant="amount" color={colors.surface} style={{ fontSize: 40, lineHeight: 46, letterSpacing: -1, fontVariant: ['tabular-nums'] }}>
       {formatMoney(cents)}
     </AppText>
   );
@@ -486,7 +500,7 @@ function MetricCard({
         variant="amount"
         color={valueDanger ? colors.danger : colors.text}
         numberOfLines={1}
-        style={{ fontSize: 18, lineHeight: 23 }}
+        style={{ fontSize: 18, lineHeight: 23, fontVariant: ['tabular-nums'] }}
       >
         {value}
       </AppText>
@@ -575,30 +589,35 @@ function QuickAction({
   tone: 'primary' | 'gold' | 'soft' | 'outline';
   onPress: () => void;
 }) {
-  const tileClass = tone === 'primary'
-    ? 'border-brand bg-brand'
-    : tone === 'gold'
-      ? 'border-gold bg-gold'
-      : tone === 'soft'
-        ? 'border-brand-tint bg-brand-tint'
-        : 'border-line bg-surface';
   const foreground = tone === 'primary' ? colors.surface : colors.deepPurple;
+  const iconBackground = tone === 'primary'
+    ? 'bg-brand'
+    : tone === 'gold'
+      ? 'bg-gold/25'
+      : tone === 'soft'
+        ? 'bg-brand-tint'
+        : 'bg-surface';
 
   return (
     <PressableCard
       accessibilityLabel={title}
       onPress={onPress}
-      className="min-h-24 min-w-0 flex-1"
+      className="min-w-0 flex-1"
     >
       {(pressed) => (
-      <View className={`min-h-24 flex-1 items-center justify-center gap-2 rounded-2xl border px-3 py-3 shadow-sm ${pressed ? 'opacity-90' : ''} ${tileClass}`}>
-      <View className={`h-10 w-10 items-center justify-center rounded-xl ${tone === 'primary' ? 'bg-white/15' : 'bg-white/70'}`}>
-        {icon}
-      </View>
-      <AppText variant="label" color={foreground} style={{ fontSize: 12 }}>
-        {title}
-      </AppText>
-      </View>
+        <View className={`min-h-[72px] flex-1 items-center justify-center gap-2 rounded-xl px-1 py-1 ${pressed ? 'bg-brand-tint/60' : ''}`}>
+          <View className={`h-11 w-11 items-center justify-center rounded-full ${iconBackground}`}>
+            {icon}
+          </View>
+          <AppText
+            variant="label"
+            color={foreground}
+            style={{ fontSize: 11, textAlign: 'center' }}
+            numberOfLines={1}
+          >
+            {title}
+          </AppText>
+        </View>
       )}
     </PressableCard>
   );

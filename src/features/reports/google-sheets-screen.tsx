@@ -17,10 +17,14 @@ async function getFunctionErrorMessage(error: unknown) {
   if (error && typeof error === 'object' && 'context' in error) {
     const context = (error as { context?: unknown }).context;
     if (context instanceof Response) {
+      const bodyText = await context.clone().text();
       try {
-        const body = await context.clone().json() as { error?: unknown };
+        const body = JSON.parse(bodyText) as { error?: unknown; message?: unknown };
         if (typeof body.error === 'string') return body.error;
+        if (typeof body.message === 'string') return body.message;
       } catch { /* Use the SDK message when the response is not JSON. */ }
+      if (bodyText.trim()) return bodyText;
+      if (!context.ok) return `Google Sheets request failed (HTTP ${context.status}).`;
     }
   }
   return error instanceof Error ? error.message : 'Google Sheets request failed.';
@@ -36,16 +40,30 @@ export function GoogleSheetsReportsScreen() {
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState('');
+  const reconnectNeeded = Boolean(
+    status.last_error && /refresh|reconnect|invalid_grant|token/i.test(status.last_error),
+  );
 
   const load = useCallback(async () => {
-    if (!ownerId) return;
-    const settings = await getShopSettings(db, ownerId);
-    setShopName(settings.shop_name || "Mama's Shop");
-    if (!supabase) { setStatus({ connected: false }); setLoading(false); return; }
-    const { data, error } = await supabase.functions.invoke('google-sheets', { body: { action: 'status', ownerId } });
-    if (error) setMessage(await getFunctionErrorMessage(error));
-    else setStatus(data as ConnectionStatus);
-    setLoading(false);
+    if (!ownerId) {
+      setLoading(false);
+      return;
+    }
+    try {
+      const settings = await getShopSettings(db, ownerId);
+      setShopName(settings.shop_name || "Mama's Shop");
+      if (!supabase) {
+        setStatus({ connected: false });
+        return;
+      }
+      const { data, error } = await supabase.functions.invoke('google-sheets', { body: { action: 'status', ownerId } });
+      if (error) throw error;
+      setStatus(data as ConnectionStatus);
+    } catch (error) {
+      setMessage(await getFunctionErrorMessage(error));
+    } finally {
+      setLoading(false);
+    }
   }, [db, ownerId]);
 
   useEffect(() => { void Promise.resolve().then(load); }, [load]);
@@ -65,6 +83,7 @@ export function GoogleSheetsReportsScreen() {
 
   const connect = async () => {
     if (!supabase) { setMessage('Cloud sync is not configured for this app yet.'); return; }
+    const reconnecting = status.connected;
     setBusy(true); setMessage('');
     try {
       const redirectUrl = ExpoLinking.createURL('settings/reports');
@@ -95,7 +114,11 @@ export function GoogleSheetsReportsScreen() {
         await load();
         const syncResult = await supabase.functions.invoke('google-sheets', { body: { action: 'sync', ownerId } });
         if (syncResult.error) throw syncResult.error;
-        setMessage('Your historical records are now in Google Sheets. New cloud-synced activity will be added automatically.');
+        setMessage(syncResult.data?.skipped
+          ? syncResult.data.message ?? 'A spreadsheet update is already running.'
+          : reconnecting
+            ? 'Google is reconnected. Your existing spreadsheet has been updated.'
+            : 'Your historical records are now in Google Sheets. New cloud-synced activity will be added automatically.');
         await load();
       } else if (result.type === 'cancel' || result.type === 'dismiss') {
         const { data: currentStatus, error: statusError } = await supabase.functions.invoke('google-sheets', { body: { action: 'status', ownerId } });
@@ -113,26 +136,50 @@ export function GoogleSheetsReportsScreen() {
       }
     } catch (error) {
       setMessage(await getFunctionErrorMessage(error));
+      await load();
     } finally { setBusy(false); }
   };
 
   const update = async () => {
-    if (!supabase) return;
-    setBusy(true); setMessage('Updating the spreadsheet from your synced shop history…');
-    const { data, error } = await supabase.functions.invoke('google-sheets', { body: { action: 'sync', ownerId } });
-    if (error) setMessage(await getFunctionErrorMessage(error));
-    else { setMessage(`Spreadsheet updated from ${data.synced ?? 0} business events.`); await load(); }
-    setBusy(false);
+    if (!supabase) {
+      setMessage('Cloud sync is not configured for this app yet.');
+      return;
+    }
+    setBusy(true);
+    setMessage('Updating the spreadsheet from your synced shop history…');
+    try {
+      const { data, error } = await supabase.functions.invoke('google-sheets', { body: { action: 'sync', ownerId } });
+      if (error) throw error;
+      setMessage(data.skipped
+        ? data.message ?? 'A spreadsheet update is already running.'
+        : `Spreadsheet updated from ${data.synced ?? 0} business events.`);
+      await load();
+    } catch (error) {
+      setMessage(await getFunctionErrorMessage(error));
+      await load();
+    } finally {
+      setBusy(false);
+    }
   };
 
   const disconnect = () => Alert.alert('Disconnect Google Sheets?', 'Automatic updates will stop. Your spreadsheet and its existing records will stay in Google Drive.', [
     { text: 'Cancel', style: 'cancel' },
     { text: 'Disconnect', style: 'destructive', onPress: () => { void (async () => {
-      if (!supabase) return;
+      if (!supabase) {
+        setMessage('Cloud sync is not configured for this app yet.');
+        return;
+      }
       setBusy(true);
-      const { error } = await supabase.functions.invoke('google-sheets', { body: { action: 'disconnect', ownerId } });
-      setMessage(error ? await getFunctionErrorMessage(error) : 'Google Sheets disconnected. The spreadsheet remains in your Drive.');
-      await load(); setBusy(false);
+      try {
+        const { error } = await supabase.functions.invoke('google-sheets', { body: { action: 'disconnect', ownerId } });
+        if (error) throw error;
+        setMessage('Google Sheets disconnected. The spreadsheet remains in your Drive.');
+        await load();
+      } catch (error) {
+        setMessage(await getFunctionErrorMessage(error));
+      } finally {
+        setBusy(false);
+      }
     })(); } },
   ]);
 
@@ -140,16 +187,39 @@ export function GoogleSheetsReportsScreen() {
     <Card style={{ gap: 10 }}>
       <View className="flex-row items-center gap-3">
         <View className="h-12 w-12 items-center justify-center rounded-2xl bg-brand-tint"><FileSpreadsheet size={24} color={colors.deepPurple} /></View>
-        <View className="flex-1 gap-1"><AppText variant="heading">Mama’s Shop business book</AppText><StatusBadge label={loading ? 'Checking connection' : status.connected ? 'Google connected' : 'Not connected'} tone={status.connected ? 'green' : 'amber'} /></View>
+        <View className="flex-1 gap-1"><AppText variant="heading">{shopName} business book</AppText><StatusBadge label={loading ? 'Checking connection' : reconnectNeeded ? 'Reconnect needed' : status.connected ? 'Google connected' : 'Not connected'} tone={status.connected && !reconnectNeeded ? 'green' : 'amber'} /></View>
       </View>
       <AppText color={colors.secondary} style={{ lineHeight: 21 }}>The workbook has a branded overview and searchable tabs for sales, stock, payments, customers, and the full event history. Each row keeps its original record ID and date.</AppText>
       {status.connected ? <View className="gap-2 rounded-2xl bg-brand-tint p-3">
         <AppText variant="label">Connected account</AppText><AppText color={colors.deepPurple}>{status.connected_email}</AppText>
         {status.last_synced_at ? <AppText variant="small" color={colors.secondary}>Last update · {new Date(status.last_synced_at).toLocaleString()}</AppText> : null}
-        {status.last_error ? <AppText variant="small" color={colors.danger}>{status.last_error}</AppText> : null}
-      </View> : <View className="rounded-2xl bg-brand-tint p-3"><AppText variant="small" color={colors.deepPurple} style={{ lineHeight: 19 }}>Connect the shop owner’s Google account. Sign in as praisetechzw@gmail.com when Google asks which account to use.</AppText></View>}
+        {status.last_error ? (
+          <View className="gap-1 rounded-xl bg-danger/10 p-3">
+            <AppText variant="label" color={colors.danger}>
+              {reconnectNeeded ? 'Reconnect Google to continue' : 'The last update needs attention'}
+            </AppText>
+            <AppText variant="small" color={colors.danger} style={{ lineHeight: 18 }}>
+              {status.last_error}
+            </AppText>
+            {reconnectNeeded ? (
+              <AppText variant="small" color={colors.secondary} style={{ lineHeight: 18 }}>
+                Sign in to the same Google account to keep using this spreadsheet. Existing records will remain in Drive.
+              </AppText>
+            ) : null}
+          </View>
+        ) : null}
+      </View> : <View className="rounded-2xl bg-brand-tint p-3"><AppText variant="small" color={colors.deepPurple} style={{ lineHeight: 19 }}>Connect the Google account where you want your business spreadsheet saved. The workbook stays in that account’s Drive.</AppText></View>}
       {status.connected && status.spreadsheet_url ? <SecondaryButton label="Open business spreadsheet" onPress={() => void Linking.openURL(status.spreadsheet_url!)} icon={<ExternalLink size={17} color={colors.deepPurple} />} /> : null}
-      {status.connected ? <PrimaryButton label={busy ? 'Updating…' : 'Update spreadsheet now'} onPress={() => void update()} loading={busy} icon={<RefreshCw size={17} color={colors.surface} />} /> : <PrimaryButton label={busy ? 'Connecting…' : 'Connect Google Sheets'} onPress={() => void connect()} loading={busy || loading} icon={<CloudUpload size={17} color={colors.surface} />} />}
+      {status.connected ? (
+        <PrimaryButton
+          label={busy ? (reconnectNeeded ? 'Reconnecting…' : 'Updating…') : reconnectNeeded ? 'Reconnect Google' : 'Update spreadsheet now'}
+          onPress={() => void (reconnectNeeded ? connect() : update())}
+          loading={busy}
+          icon={reconnectNeeded
+            ? <CloudUpload size={17} color={colors.surface} />
+            : <RefreshCw size={17} color={colors.surface} />}
+        />
+      ) : <PrimaryButton label={busy ? 'Connecting…' : 'Connect Google Sheets'} onPress={() => void connect()} loading={busy || loading} icon={<CloudUpload size={17} color={colors.surface} />} />}
       {status.connected ? <Pressable onPress={disconnect} disabled={busy} className="items-center py-2"><AppText variant="small" color={colors.danger}>Disconnect Google Sheets</AppText></Pressable> : null}
       {message ? <AppText variant="small" color={colors.secondary} style={{ lineHeight: 19 }}>{message}</AppText> : null}
     </Card>

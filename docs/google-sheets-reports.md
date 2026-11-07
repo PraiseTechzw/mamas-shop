@@ -17,6 +17,8 @@ The workbook contains:
 
 The first sync backfills the business events already in `sync_events`; later app syncs trigger a Sheets refresh. The scheduled function can also refresh the workbook while the app is closed. Local-only events are uploaded to Supabase by the app first, then become eligible for the report. This relies on the existing sync history; events that were never uploaded to Supabase and are no longer available on a device cannot be reconstructed.
 
+If a Google refresh token expires or is revoked, the Reports & Sheets screen shows a reconnect action. Reconnect with the same Google account to renew credentials and continue using the existing workbook; it does not create a replacement spreadsheet.
+
 ## Google and Supabase setup
 
 1. In Google Cloud, enable the Google Sheets API and Google Drive API. Configure an OAuth consent screen and create a **Web application** OAuth client.

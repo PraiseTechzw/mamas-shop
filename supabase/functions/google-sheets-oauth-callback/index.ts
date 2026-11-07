@@ -34,10 +34,45 @@ Deno.serve(async (request) => {
     const profileResponse = await fetch('https://openidconnect.googleapis.com/v1/userinfo', { headers: { Authorization: `Bearer ${tokens.access_token}` } });
     const profile = await profileResponse.json();
     if (!profileResponse.ok || !profile.email) throw new Error('Mama’s Shop could not confirm the connected Google account.');
-    const logo = await Deno.readFile(new URL('./app-icon.png', import.meta.url));
-    const spreadsheet = await createSpreadsheet(tokens.access_token, pending.shop_name, logo);
+    const { data: existingConnection, error: connectionError } = await admin
+      .from('google_sheets_connections')
+      .select('connected_email, spreadsheet_id, spreadsheet_url')
+      .eq('owner_id', pending.owner_id)
+      .maybeSingle();
+    if (connectionError) throw connectionError;
+    if (existingConnection && existingConnection.connected_email.toLowerCase() !== String(profile.email).toLowerCase()) {
+      throw new Error(`This shop is already linked to ${existingConnection.connected_email}. Choose that Google account to reconnect and keep using the existing spreadsheet.`);
+    }
+
+    const spreadsheet = existingConnection
+      ? {
+          spreadsheetId: existingConnection.spreadsheet_id,
+          spreadsheetUrl: existingConnection.spreadsheet_url,
+        }
+      : await createSpreadsheet(
+          tokens.access_token,
+          pending.shop_name,
+          await Deno.readFile(new URL('./app-icon.png', import.meta.url)),
+        );
     const now = new Date().toISOString();
-    const { error: saveError } = await admin.from('google_sheets_connections').upsert({ owner_id: pending.owner_id, connected_email: profile.email, spreadsheet_id: spreadsheet.spreadsheetId, spreadsheet_url: spreadsheet.spreadsheetUrl, refresh_token: tokens.refresh_token, access_token: tokens.access_token, access_token_expires_at: new Date(Date.now() + Number(tokens.expires_in ?? 3600) * 1000).toISOString(), syncing_until: null, last_error: null, updated_at: now }, { onConflict: 'owner_id' });
+    const credentials = {
+      connected_email: profile.email,
+      refresh_token: tokens.refresh_token,
+      access_token: tokens.access_token,
+      access_token_expires_at: new Date(Date.now() + Number(tokens.expires_in ?? 3600) * 1000).toISOString(),
+      last_error: null,
+      updated_at: now,
+    };
+    const saveResult = existingConnection
+      ? await admin.from('google_sheets_connections').update(credentials).eq('owner_id', pending.owner_id)
+      : await admin.from('google_sheets_connections').insert({
+          owner_id: pending.owner_id,
+          ...credentials,
+          syncing_until: null,
+          spreadsheet_id: spreadsheet.spreadsheetId,
+          spreadsheet_url: spreadsheet.spreadsheetUrl,
+        });
+    const { error: saveError } = saveResult;
     if (saveError) throw saveError;
     return appRedirect(true, undefined, returnUrl);
   } catch (error) {
