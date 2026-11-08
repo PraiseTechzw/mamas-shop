@@ -23,7 +23,7 @@ If a Google refresh token expires or is revoked, the Reports & Sheets screen sho
 
 1. In Google Cloud, enable the Google Sheets API and Google Drive API. Configure an OAuth consent screen and create a **Web application** OAuth client.
 2. Set its authorized redirect URI to `https://<project-ref>.supabase.co/functions/v1/google-sheets-oauth-callback`.
-3. For development, add the connecting account (currently `praisetechzw@gmail.com`) as an OAuth test user. Before offering this to shop users, publish the consent screen and complete any Google branding/scope verification required for the requested Sheets and Drive permissions. A project left in Testing only authorizes listed test users and has limited refresh-token lifetime. Google recommends separate testing and production projects for OAuth clients.
+3. For development, add the Google account used for testing as an OAuth test user. Before offering this to shop users, publish the consent screen and complete any Google branding/scope verification required for the requested Sheets and Drive permissions. A project left in Testing only authorizes listed test users and has limited refresh-token lifetime. Google recommends separate testing and production projects for OAuth clients.
 4. Apply all Supabase migrations, including `202610210006_google_sheets_reports.sql`.
 5. Set the following **Supabase Edge Function secrets**. Do not put the Google client secret in the app `.env` or source control:
 
@@ -70,7 +70,7 @@ If a Google refresh token expires or is revoked, the Reports & Sheets screen sho
    );
    ```
 
-9. Deploy the app with its normal Supabase URL and publishable key. In **Settings → Reports & Google Sheets**, choose **Connect Google Sheets** and select `praisetechzw@gmail.com` in Google’s account picker.
+9. Deploy the app with its normal Supabase URL and publishable key. In **Settings → Reports & Google Sheets**, choose **Connect Google Sheets** and select the Google account authorized for the OAuth project.
 
 ## Expo Go, production deep links, and EAS builds
 

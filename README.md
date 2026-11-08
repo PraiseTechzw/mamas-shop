@@ -1,31 +1,82 @@
 # Mama's Shop
 
-An Expo and React Native app focused on shop sales, stock, and customer credit.
+An offline-first shop management app for recording sales, tracking stock, and managing customer credit. Built with Expo, React Native, SQLite, and Supabase.
 
-## Getting started
+[![CI](https://github.com/PraiseTechzw/mamas-shop/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/PraiseTechzw/mamas-shop/actions/workflows/ci.yml)
+![Expo SDK 57](https://img.shields.io/badge/Expo-SDK%2057-000020?logo=expo)
+![Platforms](https://img.shields.io/badge/platforms-Android%20%7C%20iOS-4c8c6b)
+[![License: MIT](https://img.shields.io/badge/License-MIT-2f6f57.svg)](./LICENSE)
 
-Install dependencies with `npm install`, then start Expo with `npx expo start`.
+## Product scope
 
-Copy `.env.example` to `.env` and fill in the public Supabase configuration. Apply the database migrations with `npx supabase db push` after linking the project. In Supabase Authentication → URL Configuration, add `mamasshop://reset-password` to the allowed redirect URLs so password recovery can return to the app. Never commit secrets.
+- Record sales and payments, including customer balances and change owed.
+- Manage products, stock receipts, adjustments, and inventory history.
+- Track customer credit and repayments.
+- Keep business data available locally and synchronize queued changes when connectivity returns.
+- Sign in with Supabase and use the app on Android, iOS, and supported web environments.
 
-## Project organization
+The first release focuses on sales, inventory, and customer credit. Expenses, detailed reports, staff invitations, and multi-location management are not part of the current app workflow; retained database and sync support does not mean those screens are shipped.
 
-- `src/app/` contains Expo Router screens and layouts only. Route groups organize auth and tabs; supporting routes handle sales checkout and history, stock actions, customer accounts, setup, and shop settings.
-- `src/features/` owns implemented business workflows and feature-specific UI. Keep route files thin and delegate screens to their owning feature.
-- `src/components/` contains reusable UI shared across features.
-- `src/db/`, `src/lib/`, `src/services/`, and `src/stores/` contain persistence, shared utilities, integrations/synchronization, and app-wide state.
-- `supabase/` contains backend migrations, functions, and seed data.
+Money is stored as integer minor units. Recorded payment methods describe how the shop was paid; the app does not process live payments.
 
-The first release focuses on recording sales, keeping inventory accurate, and tracking customer credit. Sales, stock, and credit records save to the device first and sync when a connection is available. Staff invitations, expense tracking, detailed reports, and multi-location management are deferred from the MVP; their existing database and sync records are retained for compatibility.
+## Design references
 
-## First-run setup and money rules
+The repository includes approved UI design showcases, not screenshots captured from a running release build. See [the design reference guide](docs/design/README.md) before changing screens. Current live-app screenshots and demo recordings are not included yet.
 
-A new shop owner is taken through a first-run setup screen (`/setup`) that captures the shop name and currency, then creates the primary stock location and the owner seller profile so new sales can be recorded straight away.
+## Quick start
 
-All money is stored as integer minor units (cents). A sale records what was tendered, what was paid, and any balance separately: overpayment never becomes customer credit, and an unpaid or partially paid balance requires a customer and writes a reconciling ledger entry. Change the customer will collect later is stored in its own `change_owed` records (a shop liability shown and settled independently on the customer account) so it never corrupts the customer's credit balance. Recorded payment methods (cash, EcoCash, card, other) capture how the shop was paid; the app does not process live payments.
+### Requirements
 
-## Testing
+- Node.js and npm
+- A Supabase project for sign-in and cloud synchronization
+- Expo Go for basic development, or an EAS development build for native modules and production deep-link testing
 
-Automated coverage for the repository and sync layers runs with Jest against an in-memory SQLite database (a `node:sqlite` adapter mirrors the `expo-sqlite` API). Use `npx jest`. Before releasing, also run `npx tsc --noEmit`, `npx expo lint`, and `npx expo-doctor`.
+### Install and configure
 
-See [AGENTS.md](./AGENTS.md) for the required architecture and contribution rules used by developers and coding agents. [docs/architecture.md](./docs/architecture.md) describes how the UI, local database, and cloud sync fit together. [docs/design/README.md](./docs/design/README.md) records the approved UI/UX reference location.
+```sh
+npm ci
+cp .env.example .env
+```
+
+Set `EXPO_PUBLIC_SUPABASE_URL` and `EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY` in `.env`. The legacy `EXPO_PUBLIC_SUPABASE_ANON_KEY` is accepted as a fallback. These are public client values; never put service-role keys, OAuth client secrets, or other server credentials in `EXPO_PUBLIC_` variables.
+
+Apply the repository's Supabase migrations to the intended project. For a linked project, use `npx supabase link` followed by `npx supabase db push`. In Supabase Authentication URL Configuration, allow `mamasshop://reset-password` for password recovery. Google Sheets configuration is optional and documented separately.
+
+### Run
+
+```sh
+npm run start
+```
+
+Use the Expo CLI prompts to open the app on a device, emulator, or web. Native modules and production OAuth/deep-link flows require a development or store build; Expo Go does not include every native module.
+
+## Quality checks
+
+Run the same checks used by GitHub Actions before opening a pull request:
+
+```sh
+npm run lint
+npx tsc --noEmit
+npm test -- --runInBand
+```
+
+The Jest suites exercise repositories and synchronization against an in-memory SQLite adapter. `npx expo-doctor` is also recommended before a release build.
+
+## Repository map
+
+| Path              | Contents                                                  |
+| ----------------- | --------------------------------------------------------- |
+| `src/app/`        | Expo Router routes and layouts                            |
+| `src/features/`   | Feature-owned screens and business workflows              |
+| `src/components/` | Shared presentation components                            |
+| `src/db/`         | SQLite schema, migrations, and repositories               |
+| `src/services/`   | Cloud synchronization and service integrations            |
+| `supabase/`       | Remote migrations, Edge Functions, and seed data          |
+| `tests/`          | Jest tests for data, business rules, and sync             |
+| `docs/`           | Architecture, product design, setup, and release guidance |
+
+See [the documentation index](docs/README.md) for project guides and [CONTRIBUTING.md](CONTRIBUTING.md) for the contribution workflow.
+
+## License
+
+This project is distributed under the [MIT License](LICENSE). Third-party packages and assets may have separate terms; consult their respective license notices.
