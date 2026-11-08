@@ -23,6 +23,13 @@ Money is stored as integer minor units. Recorded payment methods describe how th
 
 The repository includes approved UI design showcases, not screenshots captured from a running release build. See [the design reference guide](docs/design/README.md) before changing screens. Current live-app screenshots and demo recordings are not included yet.
 
+<details>
+<summary>View the approved UI showcase (design reference, not a live app screenshot)</summary>
+
+![Mama's Shop approved mobile UI design showcase](design/Mama%E2%80%99s%20Shop%20Mobile%20App%20UI%20Showcase.png)
+
+</details>
+
 ## Quick start
 
 ### Requirements
