@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Modal, Platform, View } from 'react-native';
-import * as SecureStore from 'expo-secure-store';
+import 'expo-sqlite/localStorage/install';
 import * as Updates from 'expo-updates';
 import { Check, Sparkles } from 'lucide-react-native';
 import { AppText, PrimaryButton } from '@/components/ui/primitives';
@@ -17,31 +17,30 @@ export function WhatsNewNotice() {
   useEffect(() => {
     if (Platform.OS === 'web' || !updateId) return;
     let active = true;
-    void SecureStore.getItemAsync(lastSeenUpdateKey)
-      .then((lastSeenUpdateId) => {
-        if (active) setVisible(lastSeenUpdateId !== updateId);
-      })
-      .catch((error: unknown) => {
+    void Promise.resolve().then(() => {
+      if (!active) return;
+      try {
+        setVisible(localStorage.getItem(lastSeenUpdateKey) !== updateId);
+      } catch (error) {
         console.error('[updates] Could not read the last-seen update ID', error);
-        if (active) {
-          setStorageError('We could not save this update notice yet. Please try again.');
-          setVisible(true);
-        }
-      });
+        setStorageError('We could not load or save this update notice. Please try again.');
+        setVisible(true);
+      }
+    });
     return () => {
       active = false;
     };
   }, [updateId]);
 
-  const dismiss = async () => {
+  const dismiss = () => {
     if (!updateId) return;
     setStorageError('');
     try {
-      await SecureStore.setItemAsync(lastSeenUpdateKey, updateId);
+      localStorage.setItem(lastSeenUpdateKey, updateId);
       setVisible(false);
     } catch (error) {
       console.error('[updates] Could not save the last-seen update ID', error);
-      setStorageError('We could not save this update notice yet. Please try again.');
+      setStorageError('We could not load or save this update notice. Please try again.');
     }
   };
 
@@ -52,7 +51,7 @@ export function WhatsNewNotice() {
       visible
       transparent
       animationType="fade"
-      onRequestClose={() => void dismiss()}
+      onRequestClose={dismiss}
     >
       <View className="flex-1 justify-center bg-text/50 px-5">
         <View className="gap-4 rounded-3xl border border-line bg-surface p-5">
@@ -80,7 +79,7 @@ export function WhatsNewNotice() {
           {storageError ? (
             <AppText variant="small" color={colors.danger}>{storageError}</AppText>
           ) : null}
-          <PrimaryButton label="Got it" onPress={() => void dismiss()} />
+          <PrimaryButton label="Got it" onPress={dismiss} />
         </View>
       </View>
     </Modal>
